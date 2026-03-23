@@ -16,6 +16,13 @@ local function truncate(s, max)
 	return s:sub(1, max - 1) .. "…"
 end
 
+--- Obsidian CLI expects `query="..."` (double quotes around the value). Escape `\` and `"` inside the value only.
+---@param s string
+---@return string
+local function escapeObsidianCliDoubleQuoted(s)
+	return (s:gsub("\\", "\\\\"):gsub('"', '\\"'))
+end
+
 --- Flatten Obsidian `search:context format=json` payload into selectable rows.
 --- Shape: `[{ file = "rel/path.md", matches = { { line = n, text = "..." }, ... } }, ...]`
 ---@param parsed table
@@ -47,7 +54,7 @@ local function query_note_matches(opts)
 	if opts.folder ~= nil and opts.folder ~= "" then
 		searchCmd = searchCmd .. " path=" .. vim.fn.shellescape(opts.folder)
 	end
-	searchCmd = searchCmd .. " query=" .. vim.fn.shellescape(opts.query)
+	searchCmd = searchCmd .. ' query="' .. escapeObsidianCliDoubleQuoted(opts.query) .. '"'
 
 	local response = require("obsidian.cli").runJsonCommand(searchCmd)
 	if response == nil then
@@ -306,7 +313,7 @@ search.findWithinTags = function(opts)
 
 	local raw = require("obsidian.cli").runTextCommand("tags")
 	if raw == nil then
-		log.append("findWithinTags: runTextCommand(\"tags\") returned nil\n")
+		log.append('findWithinTags: runTextCommand("tags") returned nil\n')
 		return
 	end
 
