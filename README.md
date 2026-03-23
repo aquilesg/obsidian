@@ -23,22 +23,15 @@ This plugin is intended to be used via API call and does not support features su
 
 `Obsidian CreateNote`
 
-- [>] Note Creation
-  - [ ] Template Substitution
-- [ ] Note Searching
+- [x] Note Creation
+  - [x] Template Substitution
+- [x] Note Searching
 - [ ] Note Renaming
 - [ ] Tag Creation
-- [ ] Tag Searching
+- [x] Tag Searching
 - Completion
   - [ ] Notes Based off of Name
-- [ ] Tags Based off of Name
-
-### Underlying Process
-
-On init and whenever a new tag / note is created; this plugin
-indexes each entry to correlate tags to a respective note.
-
-This allows for quick searching within your vault.
+  - [ ] Tags Based off of Name
 
 ## Testing
 

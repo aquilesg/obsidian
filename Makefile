@@ -5,6 +5,6 @@ help:
 	@echo "  test    - Run unit tests"
 
 test:
-	@nvim --headless -c "PlenaryBustedDirectory tests/ { minimal_init = 'tests/init.lua' }" -c "qa!"
+	@nvim --headless -u tests/init.lua -c "PlenaryBustedDirectory tests/ { minimal_init = 'tests/init.lua' }" -c "qa!"
 
 

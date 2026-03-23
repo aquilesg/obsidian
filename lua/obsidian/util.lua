@@ -3,9 +3,9 @@ local M = {}
 --- Check for input file existence
 ---@param path string # Path to check
 ---@return boolean # Indicator if file exists
-function M.check_file_exists(path)
+function M.checkFileExists(path)
 	local stat = vim.uv.fs_stat(path)
-	return stat and stat.type == "file"
+	return stat ~= nil and stat.type == "file"
 end
 
 --- Copies a file over and renames it
@@ -13,7 +13,7 @@ end
 ---@param destination string # Destination directory to put file
 ---@param newTitle string # New filename for the copied file
 ---@return nil|string # nil on success, error message on failure
-function M.copy_file_and_rename(path, destination, newTitle)
+function M.copyFileAndRename(path, destination, newTitle)
 	-- Ensure destination ends with a slash
 	if string.sub(destination, -1) ~= "/" then
 		destination = destination .. "/"
@@ -42,7 +42,7 @@ end
 ---@param path string # Path to the file
 ---@param vars table<string, string> # Table of variables to replace
 ---@return nil|string # nil on success, error message on failure
-function M.find_and_replace(path, vars)
+function M.findAndReplace(path, vars)
 	local infile = io.open(path, "r")
 	if not infile then
 		return "Failed to open file for reading: " .. path
@@ -62,6 +62,199 @@ function M.find_and_replace(path, vars)
 	outfile:write(content)
 	outfile:close()
 	return nil
+end
+
+--- Split a markdown note into YAML front matter (inner text) and body.
+--- Supports a leading --- block; if missing, returns nil, full content.
+---@param content string
+---@return string|nil yaml_inner Text between delimiters (no --- lines)
+---@return string body Rest of file after closing ---
+function M.splitNoteContent(content)
+	-- Literal --- must use %- in Lua patterns (otherwise - is repetition).
+	local open = "^%s*%-%-%-%s*[\r\n]"
+	if not content:match(open) then
+		return nil, content
+	end
+	local after_open = content:match("^%s*%-%-%-%s*[\r\n]+(.*)$")
+	if not after_open then
+		return nil, content
+	end
+	-- Empty YAML: closing --- is the first line after the opening delimiter
+	if after_open:match("^%-%-%-%s*[\r\n]") then
+		local body = after_open:match("^%-%-%-%s*[\r\n]+(.*)$")
+		return "", body or ""
+	end
+	local yaml_inner, body = after_open:match("^(.-)[\r\n]+%-%-%-%s*[\r\n]+(.*)$")
+	if not yaml_inner then
+		return nil, content
+	end
+	return yaml_inner, body
+end
+
+--- Parse a simple YAML subset: scalar lines (key: value) and one level of lists (key: then indented - items).
+---@param yaml_inner string
+---@return table|nil data
+---@return string[]|nil key_order
+---@return string|nil err
+function M.parseYamlFrontmatterBlock(yaml_inner)
+	if yaml_inner == "" then
+		return {}, {}
+	end
+	local result = {}
+	local order = {}
+	local lines = vim.split(yaml_inner, "\n", { plain = true })
+	local i = 1
+	while i <= #lines do
+		local line = lines[i]
+		if line:match("^%s*$") then
+			i = i + 1
+		else
+			local key, rest = line:match("^([%w_%-]+)%s*:%s*(.*)$")
+			if not key then
+				return nil, nil, "invalid front matter line: " .. line
+			end
+			if rest == "" then
+				local next_ln = lines[i + 1]
+				if next_ln and next_ln:match("^%s+%-") then
+					i = i + 1
+					local list = {}
+					while i <= #lines do
+						local l = lines[i]
+						local item = l:match("^%s+%-%s+(.+)$")
+						if item then
+							table.insert(list, item)
+							i = i + 1
+						else
+							break
+						end
+					end
+					table.insert(order, key)
+					result[key] = list
+				else
+					table.insert(order, key)
+					result[key] = ""
+					i = i + 1
+				end
+			else
+				table.insert(order, key)
+				result[key] = rest
+				i = i + 1
+			end
+		end
+	end
+	return result, order, nil
+end
+
+--- Serialize a simple front matter table back to YAML (no surrounding ---).
+---@param data table
+---@param key_order string[] keys in output order (new keys not listed are appended at end)
+---@return string
+function M.serializeFrontmatter(data, key_order)
+	local seen = {}
+	local order = {}
+	for _, k in ipairs(key_order or {}) do
+		if data[k] ~= nil then
+			table.insert(order, k)
+			seen[k] = true
+		end
+	end
+	for k, _ in pairs(data) do
+		if not seen[k] and data[k] ~= nil then
+			table.insert(order, k)
+		end
+	end
+
+	local lines = {}
+	for _, key in ipairs(order) do
+		local v = data[key]
+		if type(v) == "table" then
+			table.insert(lines, key .. ":")
+			for _, item in ipairs(v) do
+				table.insert(lines, "  - " .. item)
+			end
+		else
+			table.insert(lines, key .. ": " .. tostring(v))
+		end
+	end
+	return table.concat(lines, "\n") .. (#order > 0 and "\n" or "")
+end
+
+---@param yaml_inner string
+---@param body string
+---@return string
+function M.buildNoteWithFrontmatter(yaml_inner, body)
+	return "---\n" .. yaml_inner .. "---\n\n" .. body
+end
+
+--- Path of `file_abs` relative to the vault root, using `/` separators (for Obsidian CLI).
+---@param vault_root string Absolute vault directory
+---@param file_abs string Absolute path to a file
+---@return string|nil rel e.g. `notes/Foo.md`, or nil if the file is not under the vault
+function M.fileRelativeToVault(vault_root, file_abs)
+	vault_root = vim.fs.normalize(vault_root)
+	file_abs = vim.fs.normalize(file_abs)
+	local rel
+	if vim.fs.relpath then
+		rel = vim.fs.relpath(vault_root, file_abs)
+	else
+		local base = vault_root
+		if base:sub(-1) ~= "/" then
+			base = base .. "/"
+		end
+		if file_abs:sub(1, #base) == base then
+			rel = file_abs:sub(#base + 1)
+		end
+	end
+	if not rel or rel == "" then
+		return nil
+	end
+	return rel:gsub("\\", "/")
+end
+
+--- Merge or prepend YAML front matter keys into markdown content.
+---@param content string
+---@param updates table
+---@return string|nil new_content
+---@return string|nil err
+function M.mergeFrontmatterIntoContent(content, updates)
+	if not updates or next(updates) == nil then
+		return content, nil
+	end
+
+	local yaml_inner, body = M.splitNoteContent(content)
+	local data, key_order, parse_err
+
+	if yaml_inner ~= nil then
+		data, key_order, parse_err = M.parseYamlFrontmatterBlock(yaml_inner)
+		if parse_err then
+			return nil, parse_err
+		end
+	else
+		data = {}
+		key_order = {}
+		body = content
+	end
+
+	local merged = vim.deepcopy(data)
+	for k, v in pairs(updates) do
+		merged[k] = v
+	end
+	local merged_order = vim.fn.copy(key_order)
+	for k, _ in pairs(updates) do
+		local found = false
+		for _, ok in ipairs(merged_order) do
+			if ok == k then
+				found = true
+				break
+			end
+		end
+		if not found then
+			table.insert(merged_order, k)
+		end
+	end
+
+	local yaml_str = M.serializeFrontmatter(merged, merged_order)
+	return M.buildNoteWithFrontmatter(yaml_str, body or ""), nil
 end
 
 return M
