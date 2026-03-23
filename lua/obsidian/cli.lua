@@ -1,5 +1,18 @@
 local Obsidian = {}
 
+--- Run a shell command and return its output.
+-- @param cmd string: The shell command to run.
+-- @return string|nil: The command output, or nil on error.
+function Obsidian.run_command(cmd)
+	local obsidianCmd = "obsidian " .. cmd
+	local output = vim.fn.system(obsidianCmd)
+	if vim.v.shell_error ~= 0 then
+		vim.notify("Command failed: " .. obsidianCmd, vim.log.levels.ERROR)
+		return nil
+	end
+	return output
+end
+
 --- Run a shell command and parse its JSON output.
 -- @param cmd string: The shell command to run.
 -- @return table|nil: The parsed JSON table, or nil on error.
@@ -25,15 +38,19 @@ end
 ---@field path string
 ---@field template string
 
---- Create a note
-function Obsidian.create(createOpts)
-	local createNoteCmd = "obsidian create name="
+--- Creates a note
+---@param createOpts ObsidianCreateOpts
+---@return boolean success
+function Obsidian.createNote(createOpts)
+	local createNoteCmd = "create name="
 		.. createOpts.name
 		.. " path="
 		.. createOpts.path
 		.. " template="
-		.. createOpts.templateName
-		.. " open"
+		.. createOpts.template
+	local err = Obsidian.run_command(createNoteCmd)
+
+	return err ~= nil
 end
 
-return Obsidian()
+return Obsidian
