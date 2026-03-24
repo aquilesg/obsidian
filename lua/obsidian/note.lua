@@ -145,4 +145,32 @@ function NoteAPI.UpdateNoteProperties(properties, note_path)
 	end
 end
 
+--- Get note properties
+---@param note_path string # FilePath relative to directory
+---@param property_name string
+---@return table # Property value
+function NoteAPI.GetNoteProperty(note_path, property_name)
+	local target = note_path
+	local cfg = require("obsidian").getConfig()
+	if not cfg.obsidian_vault_dir then
+		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+		return {}
+	end
+
+	if not note_path then
+		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+	end
+
+	local cli = require("obsidian.cli")
+	local result = cli.runTextCommand(string.format('property:read name="%s" path="%s"', property_name, target))
+
+	local lines = {}
+	if result then
+		for line in tostring(result):gmatch("[^\r\n]+") do
+			table.insert(lines, line)
+		end
+	end
+	return lines
+end
+
 return NoteAPI

@@ -2,6 +2,29 @@ local M = {}
 
 local log = require("obsidian.log")
 
+--- Checks if tables have an intersection
+---@param tbl1 table
+---@param tbl2 table
+function M.has_intersection(tbl1, tbl2)
+	local set = {}
+	for _, v in ipairs(tbl1) do
+		set[v] = true
+	end
+	for _, v in ipairs(tbl2) do
+		if set[v] then
+			return true
+		end
+	end
+	return false
+end
+
+--- Obsidian CLI expects `key="..."` (double quotes). Escape `\` and `"` inside the value only.
+---@param s string
+---@return string
+function M.escapeObsidianCliDoubleQuoted(s)
+	return (tostring(s):gsub("\\", "\\\\"):gsub('"', '\\"'))
+end
+
 function M.get_relative_path(absolute_path, vault_dir)
 	if vault_dir:sub(-1) == "/" then
 		vault_dir = vault_dir:sub(1, -2)
