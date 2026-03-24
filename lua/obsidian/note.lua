@@ -3,19 +3,25 @@ local NoteAPI = {}
 
 local log = require("obsidian.log")
 
+---@class NoteProperty
+---@field name string
+---@field value string
+---@field type string #text|list|number|checkbox|date|datetime
+
 ---@class NoteOptions
 ---@field fileName string # Filename for the note
 ---@field path string # Path relative to the vault where file should be created
 ---@field templateName string # Name of the template to use
 ---@field templateVariables table<string, string> # Map of Template variables to substitue
----@field frontmatter? table # Optional fields merged into YAML front matter after template copy
+---@field properties NoteProperty[] # Optional fields merged into YAML properties after template copy
 
 -- Note creator
 ---@param noteOptions NoteOptions
----@return string|nil fileName # File name of created note
+---@return string|nil filePath, string|nil fileName
 function NoteAPI.createNoteFromTemplate(noteOptions)
 	local util = require("obsidian.util")
 	local cfg = require("obsidian").getConfig()
+	local filename = noteOptions.fileName .. ".md"
 	if not cfg.obsidian_vault_dir then
 		log.append("createNoteFromTemplate: obsidian_vault_dir not configured\n")
 		vim.notify("obsidian_vault_dir not configured", vim.log.levels.ERROR)
@@ -23,7 +29,7 @@ function NoteAPI.createNoteFromTemplate(noteOptions)
 	end
 
 	local template_dir = cfg.template_dir or "templates"
-	local templatePath = vim.fs.joinpath(cfg.obsidian_vault_dir, template_dir, noteOptions.templateName)
+	local templatePath = vim.fs.joinpath(cfg.obsidian_vault_dir, template_dir, noteOptions.templateName .. ".md")
 	if not util.checkFileExists(templatePath) then
 		log.append("createNoteFromTemplate: template missing\n" .. templatePath .. "\n")
 		vim.notify("Template " .. templatePath .. " does not exist", vim.log.levels.ERROR)
@@ -33,14 +39,14 @@ function NoteAPI.createNoteFromTemplate(noteOptions)
 	local dest_dir = vim.fs.joinpath(cfg.obsidian_vault_dir, noteOptions.path or "")
 	vim.fn.mkdir(dest_dir, "p")
 
-	local err = util.copyFileAndRename(templatePath, dest_dir, noteOptions.fileName)
+	local err = util.copyFileAndRename(templatePath, dest_dir, filename)
 	if err ~= nil then
 		log.append("createNoteFromTemplate: copy failed\n" .. tostring(err) .. "\n")
 		vim.notify("Could not create with template" .. templatePath .. " Err: " .. err, vim.log.levels.ERROR)
 		return nil
 	end
 
-	local note_file = vim.fs.joinpath(dest_dir, noteOptions.fileName)
+	local note_file = vim.fs.joinpath(dest_dir, filename)
 	local replaceErr = util.findAndReplace(note_file, noteOptions.templateVariables)
 
 	if replaceErr ~= nil then
@@ -49,29 +55,8 @@ function NoteAPI.createNoteFromTemplate(noteOptions)
 		return nil
 	end
 
-	if noteOptions.frontmatter and next(noteOptions.frontmatter) then
-		local fin = io.open(note_file, "r")
-		if not fin then
-			vim.notify("Could not read new note for front matter: " .. note_file, vim.log.levels.ERROR)
-			return nil
-		end
-		local content = fin:read("*a")
-		fin:close()
-
-		local new_content, fm_err = util.mergeFrontmatterIntoContent(content, noteOptions.frontmatter)
-		if fm_err then
-			log.append("createNoteFromTemplate: front matter merge failed\n" .. tostring(fm_err) .. "\n")
-			vim.notify(fm_err, vim.log.levels.ERROR)
-			return nil
-		end
-		local fout = io.open(note_file, "w")
-		if not fout then
-			vim.notify("Could not write note after front matter merge: " .. note_file, vim.log.levels.ERROR)
-			return nil
-		end
-		fout:write(new_content)
-		fout:close()
-	end
+	vim.api.nvim_command("edit " .. vim.fn.fnameescape(note_file))
+	return note_file, filename
 end
 
 --- Tell the Obsidian app to open/focus a note (`obsidian open path=…`).
@@ -104,6 +89,60 @@ function NoteAPI.setActiveFile(note_path)
 	local cli = require("obsidian.cli")
 	local openCmd = "open path=" .. vim.fn.shellescape(rel)
 	return cli.runCommand(openCmd) ~= nil
+end
+
+--- Rename the currently active note
+---@param new_name string
+---@param note_path string|nil
+---@return boolean
+function NoteAPI.RenameNote(new_name, note_path)
+	local cfg = require("obsidian").getConfig()
+	local util = require("obsidian.util")
+	if not cfg.obsidian_vault_dir then
+		log.append("setActiveFile: obsidian_vault_dir not configured\n")
+		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+		return false
+	end
+
+	local abs = note_path or vim.api.nvim_buf_get_name(0)
+	if abs == nil or abs == "" then
+		vim.notify("setActiveFile: no path and buffer has no file", vim.log.levels.ERROR)
+		return false
+	end
+
+	abs = vim.fs.normalize(abs)
+	local rel = util.fileRelativeToVault(cfg.obsidian_vault_dir, abs)
+	if not rel then
+		log.append("setActiveFile: file not under vault\n" .. abs .. "\n")
+		vim.notify("setActiveFile: file is not inside obsidian_vault_dir", vim.log.levels.ERROR)
+		return false
+	end
+	local cli = require("obsidian.cli")
+	local openCmd = "rename path=" .. vim.fn.shellescape(rel) .. " name=" .. vim.fn.shellescape(new_name)
+	-- TODO: this also needs to update the ID
+	return cli.runCommand(openCmd) ~= nil
+end
+
+--- Update the properties of the note
+---@param properties NoteProperty[] # Fields merged into YAML properties after template copy
+---@param note_path string # Path to Note
+function NoteAPI.UpdateNoteProperties(properties, note_path)
+	local cli = require("obsidian.cli")
+	for _, property in ipairs(properties or {}) do
+		local err = cli.runTextCommand(
+			"property:set name='"
+				.. property.name
+				.. "' value='"
+				.. property.value
+				.. "' type='"
+				.. property.type
+				.. "' path='"
+				.. note_path
+		)
+		if err then
+			log.append("Failed to set property: " .. property.name .. " err: " .. tostring(err))
+		end
+	end
 end
 
 return NoteAPI

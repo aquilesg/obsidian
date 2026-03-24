@@ -1,4 +1,4 @@
-# obsidian.nvim
+# Obsidian
 
 A minimal Neovim plugin for working with Obsidian notes.
 
@@ -27,7 +27,7 @@ This plugin is intended to be used via API call and does not support features su
   - [x] Template Substitution
 - [x] Note Searching
 - [ ] Note Renaming
-- [ ] Tag Creation
+- [x] Tag Creation
 - [x] Tag Searching
 - Completion
   - [ ] Notes Based off of Name

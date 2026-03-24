@@ -1,5 +1,14 @@
 local M = {}
 
+local log = require("obsidian.log")
+
+local function ensure_dir_exists(dir)
+	local stat = vim.uv.fs_stat(dir)
+	if not stat then
+		vim.uv.fs_mkdir(dir, 448) -- 448 = 0o700
+	end
+end
+
 --- Check for input file existence
 ---@param path string # Path to check
 ---@return boolean # Indicator if file exists
@@ -15,26 +24,65 @@ end
 ---@return nil|string # nil on success, error message on failure
 function M.copyFileAndRename(path, destination, newTitle)
 	-- Ensure destination ends with a slash
+	log.append("trying to copy file" .. path .. " to:" .. destination)
 	if string.sub(destination, -1) ~= "/" then
 		destination = destination .. "/"
 	end
+	log.append("Destination is now:" .. destination)
+
+	ensure_dir_exists(destination)
 	local newPath = destination .. newTitle
+	log.append("NewPath is now:" .. newPath)
 
 	local infile = io.open(path, "rb")
 	if not infile then
-		return "Failed to open source file: " .. path
+		local msg = "Failed to open source file: " .. path
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		return msg
 	end
 
-	local content = infile:read("*a")
-	infile:close()
+	local content, read_err = infile:read("*a")
+	if not content then
+		local msg = "Failed to read source file: " .. (read_err or "")
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		infile:close()
+		return msg
+	end
+
+	local ok, close_err = infile:close()
+	if not ok then
+		local msg = "Failed to close source file: " .. (close_err or "")
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		return msg
+	end
 
 	local outfile = io.open(newPath, "wb")
 	if not outfile then
-		return "Failed to create destination file: " .. newPath
+		local msg = "Failed to create destination file: " .. newPath
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		return msg
 	end
 
-	outfile:write(content)
-	outfile:close()
+	local ok, write_err = outfile:write(content)
+	if not ok then
+		local msg = "Failed to write to destination file: " .. (write_err or "")
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		outfile:close()
+		return msg
+	end
+
+	local ok, close_err = outfile:close()
+	if not ok then
+		local msg = "Failed to close destination file: " .. (close_err or "")
+		log.append(msg)
+		vim.notify(msg, vim.log.levels.ERROR)
+		return msg
+	end
 	return nil
 end
 
