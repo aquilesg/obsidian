@@ -213,4 +213,32 @@ search.findWithinTags = function(opts)
 	end
 end
 
+--- FindBacklinks of the currently active note
+---@param note_path ?string # Path relative to the vault to look for
+function search.FindBacklinks(note_path)
+	local target = note_path
+	local cfg = require("obsidian").getConfig()
+	if not cfg.obsidian_vault_dir then
+		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+		return
+	end
+
+	if not note_path then
+		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+	end
+
+	local backlinks = require("obsidian.cli").runJsonCommand(string.format('backlinks path="%s" format=json', target))
+	local files = {}
+	if type(backlinks) ~= "table" then
+		vim.notify("No backlinks found", vim.log.levels.ERROR)
+		return
+	end
+	for _, item in ipairs(backlinks) do
+		if item.file then
+			table.insert(files, item.file)
+		end
+	end
+
+	pick_files_with_telescope(cfg.obsidian_vault_dir, files)
+end
 return search

@@ -2,6 +2,18 @@ local M = {}
 
 local log = require("obsidian.log")
 
+function M.get_relative_path(absolute_path, vault_dir)
+	if vault_dir:sub(-1) == "/" then
+		vault_dir = vault_dir:sub(1, -2)
+	end
+	if absolute_path:sub(1, #vault_dir) == vault_dir then
+		local rel = absolute_path:sub(#vault_dir + 2) -- +2 to skip the slash
+		return rel
+	else
+		return absolute_path
+	end
+end
+
 local function ensure_dir_exists(dir)
 	local stat = vim.uv.fs_stat(dir)
 	if not stat then

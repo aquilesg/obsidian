@@ -1,5 +1,7 @@
 local Obsidian = {}
 
+local log = require("obsidian.log")
+
 ---@param s string
 ---@return string
 local function normalizeCliOutput(s)
@@ -18,6 +20,7 @@ function Obsidian.runCommand(cmd)
 	local obsidianCmd = vim.fn.shellescape(cfg.obsidian_cli) .. " " .. cmd
 	local output = vim.fn.system(obsidianCmd)
 	if vim.v.shell_error ~= 0 then
+		log.append("Encountered err: " .. output)
 		vim.notify("Command failed: " .. obsidianCmd, vim.log.levels.ERROR)
 		return nil
 	end
@@ -32,6 +35,7 @@ function Obsidian.runTextCommand(cmd)
 	local obsidianCmd = vim.fn.shellescape(cfg.obsidian_cli) .. " " .. cmd .. " 2>&1"
 	local output = vim.fn.system(obsidianCmd)
 	if vim.v.shell_error ~= 0 then
+		log.append("Encountered err: " .. output)
 		vim.notify("Command failed: " .. obsidianCmd, vim.log.levels.ERROR)
 		return nil
 	end
@@ -44,16 +48,19 @@ end
 function Obsidian.runJsonCommand(cmd)
 	local cfg = require("obsidian").getConfig()
 	local obsidianCmd = vim.fn.shellescape(cfg.obsidian_cli) .. " " .. cmd
+	log.append("Command: " .. obsidianCmd)
 	local output = vim.fn.system(obsidianCmd)
 	if vim.v.shell_error ~= 0 then
-		vim.notify("Command failed: " .. obsidianCmd, vim.log.levels.ERROR)
+		log.append("No Output Found: " .. output)
 		return nil
 	end
 	local ok, result = pcall(vim.fn.json_decode, output)
 	if not ok then
-		vim.notify("Failed to parse JSON output", vim.log.levels.ERROR)
+		log.append("No Output Found: " .. output)
+		log.append("Failed to parse JSON output")
 		return nil
 	end
+	log.append("output: " .. output)
 	return result
 end
 
