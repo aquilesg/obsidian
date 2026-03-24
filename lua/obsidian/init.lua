@@ -8,7 +8,7 @@ local config = {
 	-- Executable for the Obsidian CLI (name on PATH or absolute path). Neovim's :help system()
 	-- does not use an interactive shell, so ~/.zshrc PATH changes often do not apply; set this if
 	-- you get "command not found" (exit 127) for `obsidian`.
-	obsidian_cli = "obsidian",
+	obsidian_cli = "/opt/homebrew/bin/obsidian",
 }
 
 function M.setup(opts)
