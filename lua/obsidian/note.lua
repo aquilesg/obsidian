@@ -129,27 +129,35 @@ end
 function NoteAPI.UpdateNoteProperties(properties, note_path)
 	local cli = require("obsidian.cli")
 	for _, property in ipairs(properties or {}) do
-		local err = cli.runTextCommand(
+		local value = property.value
+		if type(value) == "table" then
+			value = table.concat(value, ",")
+		else
+			value = tostring(value)
+		end
+		--- runTextCommand returns stdout on success, nil if the command failed.
+		local out = cli.runTextCommand(
 			"property:set name='"
 				.. property.name
 				.. "' value='"
-				.. property.value
+				.. value
 				.. "' type='"
 				.. property.type
 				.. "' path='"
 				.. note_path
+				.. "'"
 		)
-		if err then
-			log.append("Failed to set property: " .. property.name .. " err: " .. tostring(err))
+		if out == nil then
+			log.append("Failed to set property: " .. property.name .. "\n")
 		end
 	end
 end
 
 --- Get note properties
----@param note_path string # FilePath relative to directory
----@param property_name string
----@return table # Property value
-function NoteAPI.GetNoteProperty(note_path, property_name)
+---@param note_path string|nil # FilePath relative to directory
+---@param properties string[] # Properties to search for
+---@return table<string,string> # Property key matched to value
+function NoteAPI.GetNoteProperties(note_path, properties)
 	local target = note_path
 	local cfg = require("obsidian").getConfig()
 	if not cfg.obsidian_vault_dir then
@@ -162,15 +170,18 @@ function NoteAPI.GetNoteProperty(note_path, property_name)
 	end
 
 	local cli = require("obsidian.cli")
-	local result = cli.runTextCommand(string.format('property:read name="%s" path="%s"', property_name, target))
+	local result = cli.runJsonCommand(string.format('properties format=json path="%s"', target))
+	if not result then
+		return {}
+	end
 
-	local lines = {}
-	if result then
-		for line in tostring(result):gmatch("[^\r\n]+") do
-			table.insert(lines, line)
+	local out = {}
+	for _, prop in ipairs(properties) do
+		if result[prop] ~= nil then
+			out[prop] = result[prop]
 		end
 	end
-	return lines
+	return out
 end
 
 return NoteAPI

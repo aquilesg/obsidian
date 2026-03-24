@@ -26,6 +26,10 @@ function M.escapeObsidianCliDoubleQuoted(s)
 end
 
 function M.get_relative_path(absolute_path, vault_dir)
+	-- Expand ~ to home directory
+	absolute_path = vim.fn.expand(absolute_path)
+	vault_dir = vim.fn.expand(vault_dir)
+
 	if vault_dir:sub(-1) == "/" then
 		vault_dir = vault_dir:sub(1, -2)
 	end
@@ -292,52 +296,6 @@ function M.fileRelativeToVault(vault_root, file_abs)
 		return nil
 	end
 	return rel:gsub("\\", "/")
-end
-
---- Merge or prepend YAML front matter keys into markdown content.
----@param content string
----@param updates table
----@return string|nil new_content
----@return string|nil err
-function M.mergeFrontmatterIntoContent(content, updates)
-	if not updates or next(updates) == nil then
-		return content, nil
-	end
-
-	local yaml_inner, body = M.splitNoteContent(content)
-	local data, key_order, parse_err
-
-	if yaml_inner ~= nil then
-		data, key_order, parse_err = M.parseYamlFrontmatterBlock(yaml_inner)
-		if parse_err then
-			return nil, parse_err
-		end
-	else
-		data = {}
-		key_order = {}
-		body = content
-	end
-
-	local merged = vim.deepcopy(data)
-	for k, v in pairs(updates) do
-		merged[k] = v
-	end
-	local merged_order = vim.fn.copy(key_order)
-	for k, _ in pairs(updates) do
-		local found = false
-		for _, ok in ipairs(merged_order) do
-			if ok == k then
-				found = true
-				break
-			end
-		end
-		if not found then
-			table.insert(merged_order, k)
-		end
-	end
-
-	local yaml_str = M.serializeFrontmatter(merged, merged_order)
-	return M.buildNoteWithFrontmatter(yaml_str, body or ""), nil
 end
 
 return M

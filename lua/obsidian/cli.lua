@@ -56,7 +56,7 @@ function Obsidian.runJsonCommand(cmd)
 	end
 	local ok, result = pcall(vim.fn.json_decode, output)
 	if not ok then
-		log.append("No Output Found: " .. output)
+		log.append("No Output Found: " .. result)
 		log.append("Failed to parse JSON output")
 		return nil
 	end
