@@ -111,6 +111,21 @@ local function parse_tag_lines(text)
 	return items
 end
 
+--- Fetch all tags from `obsidian tags` (same lines as Telescope tag picker).
+--- Returns nil if the vault is not configured or the CLI failed.
+---@return string[]|nil
+function search.getTags()
+	local cfg = require("obsidian").getConfig()
+	if not cfg.obsidian_vault_dir then
+		return nil
+	end
+	local raw = require("obsidian.cli").runTextCommand("tags")
+	if raw == nil then
+		return nil
+	end
+	return parse_tag_lines(raw)
+end
+
 ---@param tag_line string
 ---@return string
 local function format_tag_label(tag_line)
