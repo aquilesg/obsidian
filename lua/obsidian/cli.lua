@@ -33,7 +33,9 @@ end
 function Obsidian.runTextCommand(cmd)
 	local cfg = require("obsidian").getConfig()
 	local obsidianCmd = vim.fn.shellescape(cfg.obsidian_cli) .. " " .. cmd .. " 2>&1"
+	log.append("Running:" .. obsidianCmd)
 	local output = vim.fn.system(obsidianCmd)
+	log.append("Output" .. output)
 	if vim.v.shell_error ~= 0 then
 		log.append("Encountered err: " .. output)
 		vim.notify("Command failed: " .. obsidianCmd, vim.log.levels.ERROR)

@@ -49,7 +49,7 @@ end
 --- Presents a Telescope picker for a list of files.
 ---@param vault_dir string
 ---@param files string[]
-local function pick_files_with_telescope(vault_dir, files)
+local function pick_files_with_telescope(vault_dir, files, prompt_title)
 	local pickers = require("telescope.pickers")
 	local finders = require("telescope.finders")
 	local conf = require("telescope.config").values
@@ -58,7 +58,7 @@ local function pick_files_with_telescope(vault_dir, files)
 
 	pickers
 		.new({}, {
-			prompt_title = "Notes with tag",
+			prompt_title = prompt_title,
 			results_title = "Files",
 			finder = finders.new_table({
 				results = files,
@@ -237,7 +237,6 @@ search.findWithinTags = function(opts)
 	end
 
 	local function on_tag_chosen(tag)
-		local vault_dir = cfg.obsidian_vault_dir
 		local cmd = 'tag name="' .. util.escapeObsidianCliDoubleQuoted(tag_query_value(tag)) .. '"'
 		local files = require("obsidian.cli").runTextCommand(cmd)
 		if not files or files == "" then
@@ -245,7 +244,7 @@ search.findWithinTags = function(opts)
 			return
 		end
 		local file_list = vim.split(vim.trim(files), "\n", { plain = true })
-		pick_files_with_telescope(vault_dir, file_list)
+		pick_files_with_telescope(cfg.obsidian_vault_dir, file_list, "Notes with Tag")
 	end
 
 	local ok, err = pcall(pick_tags_with_telescope, tags, on_tag_chosen)
@@ -282,7 +281,7 @@ function search.FindBacklinks(note_path)
 		end
 	end
 
-	pick_files_with_telescope(cfg.obsidian_vault_dir, files)
+	pick_files_with_telescope(cfg.obsidian_vault_dir, files, "Note Backlinks")
 end
 
 --- FindLinks of the currently active note
@@ -300,18 +299,29 @@ function search.FindLinks(note_path)
 	end
 
 	local links = require("obsidian.cli").runTextCommand(string.format('links path="%s"', target))
+	log.append("Found links: " .. vim.inspect(links)) -- Use vim.inspect for tables
+
 	local files = {}
-	if type(links) ~= "table" then
+
+	if type(links) == "string" then
+		-- Split string by newlines into a table
+		for line in links:gmatch("[^\r\n]+") do
+			if line ~= "" then
+				table.insert(files, line)
+			end
+		end
+	elseif type(links) == "table" then
+		for _, item in ipairs(links) do
+			if item.file then
+				table.insert(files, item.file)
+			end
+		end
+	else
 		vim.notify("No links found", vim.log.levels.ERROR)
 		return
 	end
-	for _, item in ipairs(links) do
-		if item.file then
-			table.insert(files, item.file)
-		end
-	end
 
-	pick_files_with_telescope(cfg.obsidian_vault_dir, files)
+	pick_files_with_telescope(cfg.obsidian_vault_dir, files, "Note Links")
 end
 
 --- Finds all notes that match all the passed in tags
