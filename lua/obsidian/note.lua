@@ -266,16 +266,28 @@ local function filter_tasks_by_status(tasks, filter_char)
 	return out
 end
 
---- One line per task in the popup (no line number — status + text only).
+--- Strip leading markdown task prefix so we do not duplicate `task.status` (e.g. `- [x] foo` → `foo`).
+---@param line string|nil
+---@return string
+local function task_body_only(line)
+	line = vim.trim(line or "")
+	local body = select(2, line:match("^%-%s*%[(.-)%]%s*(.*)$"))
+	if body ~= nil then
+		return vim.trim(body)
+	end
+	return line
+end
+
+--- One line per task: markdown-style `- [status] body` (body from `task.text` without duplicating the checkbox).
 ---@param task table
 ---@return string
 local function format_task_popup_line(task)
-	local text = task.text or "?"
-	local short = vim.fn.strcharpart(vim.trim(text), 0, 72)
-	if #vim.trim(text) > 72 then
+	local body = task_body_only(task.text or "?")
+	local short = vim.fn.strcharpart(body, 0, 72)
+	if vim.fn.strchars(body) > 72 then
 		short = short .. "…"
 	end
-	return string.format("[%s]  %s", tostring(task.status or " "), short)
+	return string.format("- [%s] %s", tostring(task.status or " "), short)
 end
 
 local TASK_POPUP_HEADER_LINES = 2
@@ -447,17 +459,27 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 	local note_abs = vim.fs.normalize(vim.fs.joinpath(cfg.obsidian_vault_dir, target))
 
 	--- Reload every normal buffer that is editing this note (after CLI changes on disk).
+	--- Uses `:edit!` instead of `:checktime` so the file refreshes immediately; `checktime`/`autoread`
+	--- can wait until the next redraw or cursor movement.
 	local function reload_note_file_buffers()
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buftype == "" then
 				local n = vim.api.nvim_buf_get_name(b)
 				if n ~= "" and vim.fs.normalize(n) == note_abs then
-					vim.api.nvim_buf_call(b, function()
-						vim.cmd.checktime()
-					end)
+					if vim.bo[b].modified then
+						vim.notify(
+							"Note has unsaved changes; skipped reload after task update.",
+							vim.log.levels.WARN
+						)
+					else
+						vim.api.nvim_buf_call(b, function()
+							vim.cmd.edit({ bang = true })
+						end)
+					end
 				end
 			end
 		end
+		vim.cmd.redraw()
 	end
 
 	local statuses = opts.statuses or cfg.task_statuses
