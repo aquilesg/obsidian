@@ -26,12 +26,12 @@ This plugin is intended to be used via API call and does not support features su
 - [x] Note Creation
   - [x] Template Substitution
 - [x] Note Searching
-- [ ] Note Renaming
+- [x] Note Renaming
 - [x] Tag Creation
 - [x] Tag Searching
 - Completion
   - [ ] Notes Based off of Name
-  - [ ] Tags Based off of Name
+  - [x] Tags Based off of Name
 
 ## Testing
 
