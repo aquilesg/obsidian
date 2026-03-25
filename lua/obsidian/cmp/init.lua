@@ -1,6 +1,7 @@
 --- Backward-compatible entry: same module as **`obsidian.cmp.tags_body`** (body-only `#` tags).
 ---
---- Prefer registering two providers explicitly:
+--- Prefer registering providers explicitly:
+--- - `obsidian.cmp.wiki_links` — `[[wiki]]` links to vault `.md` files
 --- - `obsidian.cmp.tags_body` — note body
 --- - `obsidian.cmp.tags_frontmatter` — YAML frontmatter
 ---
