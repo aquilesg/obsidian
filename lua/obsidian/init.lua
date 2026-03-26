@@ -27,6 +27,15 @@ local config = {
 	--- Normal mode `[[wiki]]` follow (see `wiki_follow.lua`). Set via `setup({ wiki_follow = ... })`.
 	---@type table|nil
 	wiki_follow = nil,
+	--- Maps template type keys → vault folder (relative). Used by `obsidian.note_creation`.
+	---@type table<string, string>|nil
+	directories = nil,
+	--- Maps template type keys → template **file** base name (under `template_dir`). Used by `obsidian.note_creation`.
+	---@type table<string, string>|nil
+	template_names = nil,
+	--- Your YAML property names (`tags`, `status`, …). Passed through for helpers / templates; optional.
+	---@type table<string, string>|nil
+	note_properties = nil,
 }
 
 ---@param wf boolean|table|nil
@@ -61,6 +70,9 @@ function M.setup(opts)
 	if config.wiki_follow then
 		require("obsidian.wiki_follow").setup(config.wiki_follow)
 	end
+	config.directories = opts.directories
+	config.template_names = opts.template_names
+	config.note_properties = opts.note_properties
 end
 
 function M.getConfig()
