@@ -24,7 +24,30 @@ local config = {
 	obsidian_cli = "/opt/homebrew/bin/obsidian",
 	---@type { key: string, label: string }[]
 	task_statuses = default_task_statuses(),
+	--- Normal mode `[[wiki]]` follow (see `wiki_follow.lua`). Set via `setup({ wiki_follow = ... })`.
+	---@type table|nil
+	wiki_follow = nil,
 }
+
+---@param wf boolean|table|nil
+---@return table|nil
+local function normalize_wiki_follow(wf)
+	if wf == nil or wf == false then
+		return nil
+	end
+	if wf == true then
+		return { enabled = true, key = "<CR>", filetypes = { "markdown" } }
+	end
+	local t = vim.tbl_extend("force", {
+		enabled = true,
+		key = "<CR>",
+		filetypes = { "markdown" },
+	}, wf)
+	if not t.enabled then
+		return nil
+	end
+	return t
+end
 
 function M.setup(opts)
 	opts = opts or {}
@@ -33,6 +56,10 @@ function M.setup(opts)
 	config.obsidian_cli = vim.fn.expand(opts.obsidian_cli or "obsidian")
 	if opts.task_statuses ~= nil then
 		config.task_statuses = opts.task_statuses
+	end
+	config.wiki_follow = normalize_wiki_follow(opts.wiki_follow)
+	if config.wiki_follow then
+		require("obsidian.wiki_follow").setup(config.wiki_follow)
 	end
 end
 
