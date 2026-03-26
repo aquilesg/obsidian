@@ -1,5 +1,7 @@
 local M = {}
 
+local log = require("obsidian.log")
+
 --- Checkbox middle characters for `UpdateNoteTask` status picker (`key` → CLI `status=`).
 ---@return { key: string, label: string }[]
 local function default_task_statuses()
@@ -77,6 +79,38 @@ end
 
 function M.getConfig()
 	return config
+end
+
+--- Normalized absolute vault path, or nil. Does not notify.
+---@return string|nil
+function M.get_vault_dir()
+	local v = config.obsidian_vault_dir
+	if not v or v == "" then
+		return nil
+	end
+	return vim.fs.normalize(vim.fn.expand(v))
+end
+
+---@class obsidian.EnsureVaultOpts
+---@field silent? boolean # if true, do not `vim.notify` (logging via `log_scope` still runs)
+---@field log_scope? string # on failure, `log.append(scope .. ": obsidian_vault_dir not configured")`
+
+--- Returns normalized vault path, or nil after optional notify/log.
+---@param opts? obsidian.EnsureVaultOpts
+---@return string|nil
+function M.ensure_vault_dir(opts)
+	opts = opts or {}
+	local v = M.get_vault_dir()
+	if v then
+		return v
+	end
+	if opts.log_scope then
+		log.append(opts.log_scope .. ": obsidian_vault_dir not configured\n")
+	end
+	if not opts.silent then
+		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	end
+	return nil
 end
 
 return M

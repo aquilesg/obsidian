@@ -145,10 +145,9 @@ end
 --- @param self table
 function M:_vault_dir()
 	if self.opts.vault_dir then
-		return vim.fn.expand(self.opts.vault_dir)
+		return vim.fs.normalize(vim.fn.expand(self.opts.vault_dir))
 	end
-	local cfg = obsidian.getConfig()
-	return cfg and cfg.obsidian_vault_dir or nil
+	return obsidian.get_vault_dir()
 end
 
 --- @param self table

@@ -77,8 +77,7 @@ end
 --- @param buf integer
 --- @return boolean
 local function buffer_path_in_vault(buf)
-	local cfg = require("obsidian").getConfig()
-	local vault = cfg.obsidian_vault_dir
+	local vault = require("obsidian").get_vault_dir()
 	if not vault then
 		return false
 	end
@@ -92,8 +91,7 @@ end
 --- @return boolean # true if the key was handled (caller should not fall through)
 local function follow_wiki_link()
 	local buf = vim.api.nvim_get_current_buf()
-	local cfg = require("obsidian").getConfig()
-	local vault = cfg.obsidian_vault_dir
+	local vault = require("obsidian").get_vault_dir()
 	if not vault then
 		return false
 	end

@@ -1,4 +1,4 @@
---- Telescope picker: notes that match a tag (default `active`), with optional template-dir skip.
+--- Telescope picker: notes that match a tag (default `active`) **or** a YAML property value, with optional template-dir skip.
 ---
 --- Requires **telescope.nvim**. Call `open_picker` from a keymap.
 ---
@@ -19,12 +19,13 @@ local function to_str(val)
 end
 
 ---@class obsidian.active_notes.PickerOpts
----@field vault? string # defaults to `obsidian.getConfig().obsidian_vault_dir`
+---@field vault? string # defaults to `obsidian.get_vault_dir()` / `ensure_vault_dir()`
 ---@field template_dir_name? string # skip notes whose path contains this (default `"Templates"`)
----@field tag? string # tag passed to `FindByTags` (default `"active"`)
+---@field tag? string # used with `FindByTags` when `active_property` is nil (default `"active"`)
+---@field active_property? { key: string, value: string|number } # if set, notes where frontmatter `key` equals `value` (list values: membership); ignores `tag`
 ---@field property_keys? { status?: string, document_type?: string, id?: string } # YAML keys for preview columns
 
---- Open a Telescope finder for notes that have `opts.tag`, showing id / document_type / status.
+--- Open a Telescope finder for notes that match `opts.tag` or `opts.active_property`, showing id / document_type / status.
 function M.open_picker(opts)
 	opts = opts or {}
 	local ok, _ = pcall(require, "telescope.pickers")
@@ -33,16 +34,15 @@ function M.open_picker(opts)
 		return
 	end
 
-	local cfg = require("obsidian").getConfig()
-	local vault = opts.vault or cfg.obsidian_vault_dir
+	local obsidian = require("obsidian")
+	local vault = opts.vault and vim.fs.normalize(vim.fn.expand(opts.vault)) or obsidian.ensure_vault_dir()
 	if not vault then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
 		return
 	end
-	vault = vim.fn.expand(vault)
 
 	local template_dir = opts.template_dir_name or "Templates"
 	local tag = opts.tag or "active"
+	local ap = opts.active_property
 	local pk = opts.property_keys or {}
 	local status_k = pk.status or "status"
 	local doc_k = pk.document_type or "document_type"
@@ -56,10 +56,22 @@ function M.open_picker(opts)
 	local action_state = require("telescope.actions.state")
 	local conf = require("telescope.config").values
 
-	local active_notes = search.FindByTags({ tag })
-	if not active_notes or vim.tbl_isempty(active_notes) then
-		vim.notify("No notes found for tag: " .. tag, vim.log.levels.INFO)
-		return
+	local active_notes ---@type string[]|nil
+	local filter_label ---@type string
+	if ap and ap.key and ap.key ~= "" then
+		active_notes = search.FindNotesMatchingProperty(ap.key, ap.value)
+		filter_label = ap.key .. "=" .. tostring(ap.value)
+		if not active_notes or vim.tbl_isempty(active_notes) then
+			vim.notify("No notes found for property: " .. filter_label, vim.log.levels.INFO)
+			return
+		end
+	else
+		active_notes = search.FindByTags({ tag })
+		filter_label = "#" .. tag
+		if not active_notes or vim.tbl_isempty(active_notes) then
+			vim.notify("No notes found for tag: " .. tag, vim.log.levels.INFO)
+			return
+		end
 	end
 
 	local display_notes = {}
@@ -90,7 +102,7 @@ function M.open_picker(opts)
 
 	pickers
 		.new({}, {
-			prompt_title = "Active notes (" .. tag .. ")",
+			prompt_title = "Active notes (" .. filter_label .. ")",
 			finder = finders.new_table({
 				results = display_notes,
 				entry_maker = function(entry)

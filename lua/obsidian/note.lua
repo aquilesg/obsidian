@@ -2,6 +2,7 @@
 local NoteAPI = {}
 
 local log = require("obsidian.log")
+local obsidian = require("obsidian")
 local encode_property_value = require("obsidian.note_properties").encode_property_value
 
 ---@class NoteProperty
@@ -21,23 +22,22 @@ local encode_property_value = require("obsidian.note_properties").encode_propert
 ---@return string|nil filePath, string|nil fileName
 function NoteAPI.createNoteFromTemplate(noteOptions)
 	local util = require("obsidian.util")
-	local cfg = require("obsidian").getConfig()
-	local filename = noteOptions.fileName .. ".md"
-	if not cfg.obsidian_vault_dir then
-		log.append("createNoteFromTemplate: obsidian_vault_dir not configured\n")
-		vim.notify("obsidian_vault_dir not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir({ log_scope = "createNoteFromTemplate" })
+	if not vault then
 		return nil
 	end
+	local cfg = obsidian.getConfig()
+	local filename = noteOptions.fileName .. ".md"
 
 	local template_dir = cfg.template_dir or "templates"
-	local templatePath = vim.fs.joinpath(cfg.obsidian_vault_dir, template_dir, noteOptions.templateName .. ".md")
+	local templatePath = vim.fs.joinpath(vault, template_dir, noteOptions.templateName .. ".md")
 	if not util.checkFileExists(templatePath) then
 		log.append("createNoteFromTemplate: template missing\n" .. templatePath .. "\n")
 		vim.notify("Template " .. templatePath .. " does not exist", vim.log.levels.ERROR)
 		return nil
 	end
 
-	local dest_dir = vim.fs.joinpath(cfg.obsidian_vault_dir, noteOptions.path or "")
+	local dest_dir = vim.fs.joinpath(vault, noteOptions.path or "")
 	vim.fn.mkdir(dest_dir, "p")
 
 	local err = util.copyFileAndRename(templatePath, dest_dir, filename)
@@ -65,13 +65,11 @@ end
 ---@param note_path string|nil
 ---@return boolean
 function NoteAPI.setActiveFile(note_path)
-	local cfg = require("obsidian").getConfig()
-	local util = require("obsidian.util")
-	if not cfg.obsidian_vault_dir then
-		log.append("setActiveFile: obsidian_vault_dir not configured\n")
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir({ log_scope = "setActiveFile" })
+	if not vault then
 		return false
 	end
+	local util = require("obsidian.util")
 
 	local abs = note_path or vim.api.nvim_buf_get_name(0)
 	if abs == nil or abs == "" then
@@ -80,7 +78,7 @@ function NoteAPI.setActiveFile(note_path)
 	end
 
 	abs = vim.fs.normalize(abs)
-	local rel = util.fileRelativeToVault(cfg.obsidian_vault_dir, abs)
+	local rel = util.fileRelativeToVault(vault, abs)
 	if not rel then
 		log.append("setActiveFile: file not under vault\n" .. abs .. "\n")
 		vim.notify("setActiveFile: file is not inside obsidian_vault_dir", vim.log.levels.ERROR)
@@ -97,25 +95,23 @@ end
 ---@param note_path string|nil
 ---@return boolean
 function NoteAPI.RenameNote(new_name, note_path)
-	local cfg = require("obsidian").getConfig()
-	local util = require("obsidian.util")
-	if not cfg.obsidian_vault_dir then
-		log.append("setActiveFile: obsidian_vault_dir not configured\n")
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir({ log_scope = "RenameNote" })
+	if not vault then
 		return false
 	end
+	local util = require("obsidian.util")
 
 	local abs = note_path or vim.api.nvim_buf_get_name(0)
 	if abs == nil or abs == "" then
-		vim.notify("setActiveFile: no path and buffer has no file", vim.log.levels.ERROR)
+		vim.notify("RenameNote: no path and buffer has no file", vim.log.levels.ERROR)
 		return false
 	end
 
 	abs = vim.fs.normalize(abs)
-	local rel = util.fileRelativeToVault(cfg.obsidian_vault_dir, abs)
+	local rel = util.fileRelativeToVault(vault, abs)
 	if not rel then
-		log.append("setActiveFile: file not under vault\n" .. abs .. "\n")
-		vim.notify("setActiveFile: file is not inside obsidian_vault_dir", vim.log.levels.ERROR)
+		log.append("RenameNote: file not under vault\n" .. abs .. "\n")
+		vim.notify("RenameNote: file is not inside obsidian_vault_dir", vim.log.levels.ERROR)
 		return false
 	end
 	local cli = require("obsidian.cli")
@@ -154,14 +150,13 @@ end
 ---@return table<string,string> # Property key matched to value
 function NoteAPI.GetNoteProperties(note_path, properties)
 	local target = note_path
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir()
+	if not vault then
 		return {}
 	end
 
 	if not note_path then
-		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), vault)
 	end
 
 	local cli = require("obsidian.cli")
@@ -422,16 +417,16 @@ end
 ---@param opts { statuses?: { key: string, label: string }[] }|nil Optional status list for the second prompt (overrides `setup({ task_statuses = … })`).
 function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 	opts = opts or {}
-	local cfg = require("obsidian").getConfig()
-	local util = require("obsidian.util")
-	if not cfg.obsidian_vault_dir then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir()
+	if not vault then
 		return
 	end
+	local cfg = obsidian.getConfig()
+	local util = require("obsidian.util")
 
 	local target = note_path
 	if not target or target == "" then
-		target = util.get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+		target = util.get_relative_path(vim.api.nvim_buf_get_name(0), vault)
 	end
 
 	local cli = require("obsidian.cli")
@@ -443,7 +438,7 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 
 	local task_table = cli.runJsonCommand(task_cmd)
 	local tasks = normalize_tasks_json(task_table)
-	tasks = filter_tasks_for_note(tasks, target, cfg.obsidian_vault_dir)
+	tasks = filter_tasks_for_note(tasks, target, vault)
 	tasks = filter_tasks_by_status(tasks, requested_task_char)
 
 	if #tasks == 0 then
@@ -451,7 +446,7 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 		return
 	end
 
-	local note_abs = vim.fs.normalize(vim.fs.joinpath(cfg.obsidian_vault_dir, target))
+	local note_abs = vim.fs.normalize(vim.fs.joinpath(vault, target))
 
 	--- Reload every normal buffer that is editing this note (after CLI changes on disk).
 	--- Uses `:edit!` instead of `:checktime` so the file refreshes immediately; `checktime`/`autoread`
@@ -482,7 +477,7 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 	local function fetch_tasks()
 		local task_table = cli.runJsonCommand(task_cmd)
 		local t = normalize_tasks_json(task_table)
-		t = filter_tasks_for_note(t, target, cfg.obsidian_vault_dir)
+		t = filter_tasks_for_note(t, target, vault)
 		t = filter_tasks_by_status(t, requested_task_char)
 		return t
 	end

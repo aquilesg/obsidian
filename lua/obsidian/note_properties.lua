@@ -4,6 +4,8 @@
 
 local M = {}
 
+local obsidian = require("obsidian")
+
 --- Serialize values for `obsidian property:set`: comma-separated string lists vs JSON array of objects.
 ---@param value any
 ---@return string
@@ -113,10 +115,8 @@ end
 ---@param opts { blocked_property: string, status_property: string, status_value: string }
 ---@return table[]|nil # property rows, or nil if vault is not configured
 function M.properties_for_mark_blocked(note_rel, response, opts)
-	local cfg = require("obsidian").getConfig()
-	local vault = cfg.obsidian_vault_dir
+	local vault = obsidian.ensure_vault_dir()
 	if not vault then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
 		return nil
 	end
 
@@ -200,13 +200,10 @@ end
 ---
 ---@param properties table[] # rows passed to `note.UpdateNoteProperties`
 function M.update_note_properties(properties)
-	local cfg = require("obsidian").getConfig()
-	local vault = cfg.obsidian_vault_dir
+	local vault = obsidian.ensure_vault_dir()
 	if not vault then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
 		return
 	end
-	vault = vim.fn.expand(vault)
 
 	vim.api.nvim_buf_call(vim.api.nvim_get_current_buf(), function()
 		vim.cmd("write")

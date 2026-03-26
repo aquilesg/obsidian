@@ -1,6 +1,7 @@
 local search = {}
 
 local log = require("obsidian.log")
+local obsidian = require("obsidian")
 
 ---@class NoteSearchOpts
 ---@field query string # Text to search for
@@ -110,8 +111,7 @@ end
 --- Returns nil if the vault is not configured or the CLI failed.
 ---@return string[]|nil
 function search.getTags()
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
+	if not obsidian.get_vault_dir() then
 		return nil
 	end
 	local raw = require("obsidian.cli").runTextCommand("tags")
@@ -206,10 +206,8 @@ end
 search.findWithinTags = function(opts)
 	opts = opts or {}
 
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		log.append("findWithinTags: obsidian_vault_dir not configured\n")
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir({ log_scope = "findWithinTags" })
+	if not vault then
 		return
 	end
 
@@ -244,7 +242,7 @@ search.findWithinTags = function(opts)
 			return
 		end
 		local file_list = vim.split(vim.trim(files), "\n", { plain = true })
-		pick_files_with_telescope(cfg.obsidian_vault_dir, file_list, "Notes with Tag")
+		pick_files_with_telescope(vault, file_list, "Notes with Tag")
 	end
 
 	local ok, err = pcall(pick_tags_with_telescope, tags, on_tag_chosen)
@@ -259,14 +257,13 @@ end
 ---@param note_path ?string # Path relative to the vault to look for
 function search.FindBacklinks(note_path)
 	local target = note_path
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir()
+	if not vault then
 		return
 	end
 
 	if not note_path then
-		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), vault)
 	end
 
 	local backlinks = require("obsidian.cli").runJsonCommand(string.format('backlinks path="%s" format=json', target))
@@ -281,21 +278,20 @@ function search.FindBacklinks(note_path)
 		end
 	end
 
-	pick_files_with_telescope(cfg.obsidian_vault_dir, files, "Note Backlinks")
+	pick_files_with_telescope(vault, files, "Note Backlinks")
 end
 
 --- FindLinks of the currently active note
 --- @param note_path ?string # Path relative to the vault
 function search.FindLinks(note_path)
 	local target = note_path
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+	local vault = obsidian.ensure_vault_dir()
+	if not vault then
 		return
 	end
 
 	if not note_path then
-		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), cfg.obsidian_vault_dir)
+		target = require("obsidian.util").get_relative_path(vim.api.nvim_buf_get_name(0), vault)
 	end
 
 	local links = require("obsidian.cli").runTextCommand(string.format('links path="%s"', target))
@@ -321,16 +317,14 @@ function search.FindLinks(note_path)
 		return
 	end
 
-	pick_files_with_telescope(cfg.obsidian_vault_dir, files, "Note Links")
+	pick_files_with_telescope(vault, files, "Note Links")
 end
 
 --- Finds all notes that match all the passed in tags
 ---@param tagList string[] Tags to search for
 ---@return string[]|nil # The path of the note, relative to the vault.
 function search.FindByTags(tagList)
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		log.append("FindByTags: obsidian_vault_dir not configured\n")
+	if not obsidian.ensure_vault_dir({ silent = true, log_scope = "FindByTags" }) then
 		return
 	end
 
@@ -405,9 +399,7 @@ end
 ---@param tagList string[] Tags to search for
 ---@return string[]|nil # Paths relative to the vault, or nil if none.
 function search.FindByTagsUnion(tagList)
-	local cfg = require("obsidian").getConfig()
-	if not cfg.obsidian_vault_dir then
-		log.append("FindByTagsUnion: obsidian_vault_dir not configured\n")
+	if not obsidian.ensure_vault_dir({ silent = true, log_scope = "FindByTagsUnion" }) then
 		return
 	end
 
@@ -474,6 +466,126 @@ function search.FindByTagsUnion(tagList)
 	end
 
 	return result
+end
+
+---@param raw any # scalar or list from simple YAML parse
+---@param expected string|number
+---@return boolean
+local function property_value_matches(raw, expected)
+	if raw == nil then
+		return false
+	end
+	local exp = vim.trim(tostring(expected))
+	if type(raw) == "table" then
+		for _, v in ipairs(raw) do
+			local s = vim.trim(tostring(v))
+			if s:sub(1, 1) == '"' and s:sub(-1, -1) == '"' then
+				s = s:sub(2, -2)
+			end
+			if s == exp then
+				return true
+			end
+		end
+		return false
+	end
+	local s = vim.trim(tostring(raw))
+	if s:sub(1, 1) == '"' and s:sub(-1, -1) == '"' then
+		s = s:sub(2, -2)
+	end
+	return s == exp
+end
+
+--- Relative `.md` paths under the vault (excluding `.git`, `.obsidian`, `.trash`).
+---@param vault_root string
+---@return string[]
+local function list_vault_md_paths(vault_root)
+	local paths = {}
+	local exclude = { [".git"] = true, [".obsidian"] = true, [".trash"] = true }
+	local ok_depth = pcall(function()
+		for _, _ in vim.fs.dir(vault_root, { depth = math.huge }) do
+			break
+		end
+	end)
+	if ok_depth then
+		for name, ftype in vim.fs.dir(vault_root, { depth = math.huge }) do
+			if ftype == "file" and vim.endswith(name, ".md") then
+				local first = name:match("^([^/]+)/") or name:match("^([^/]+)$")
+				if not exclude[first] then
+					paths[#paths + 1] = name
+				end
+			end
+		end
+		return paths
+	end
+	---@param dir string
+	---@param rel_prefix string
+	local function walk(dir, rel_prefix)
+		local ok, iter = pcall(vim.fs.dir, dir)
+		if not ok or not iter then
+			return
+		end
+		for name, ftype in iter do
+			if name ~= "." and name ~= ".." then
+				local rel = rel_prefix == "" and name or (rel_prefix .. "/" .. name)
+				if ftype == "file" and vim.endswith(name, ".md") then
+					paths[#paths + 1] = rel
+				elseif ftype == "directory" then
+					local seg = rel:match("^([^/]+)") or rel
+					if not exclude[seg] then
+						walk(vim.fs.joinpath(dir, name), rel)
+					end
+				end
+			end
+		end
+	end
+	walk(vault_root, "")
+	return paths
+end
+
+--- Notes whose frontmatter has `property_key` equal to `expected_value` (scalar or list membership).
+--- Uses the same simple YAML subset as `util.parseYamlFrontmatterBlock` (no CLI per file).
+---@param property_key string
+---@param expected_value string|number
+---@return string[]|nil # Paths relative to the vault, or nil if none / vault missing.
+function search.FindNotesMatchingProperty(property_key, expected_value)
+	local vault = obsidian.ensure_vault_dir({ silent = true, log_scope = "FindNotesMatchingProperty" })
+	if not vault then
+		return nil
+	end
+	if not property_key or property_key == "" then
+		log.append("FindNotesMatchingProperty: empty property_key\n")
+		return nil
+	end
+	local rel_paths = list_vault_md_paths(vault)
+	local matches = {}
+	for _, rel in ipairs(rel_paths) do
+		local abs = vim.fs.joinpath(vault, rel)
+		local fd = io.open(abs, "r")
+		if fd then
+			local content = fd:read("*a")
+			fd:close()
+			local yaml_inner = select(1, util.splitNoteContent(content))
+			if yaml_inner then
+				local data, _, err = util.parseYamlFrontmatterBlock(yaml_inner)
+				if not err and data and property_value_matches(data[property_key], expected_value) then
+					matches[#matches + 1] = rel
+				end
+			end
+		end
+	end
+
+	if #matches == 0 then
+		log.append(
+			"FindNotesMatchingProperty: no notes with "
+				.. property_key
+				.. "="
+				.. tostring(expected_value)
+				.. "\n"
+		)
+		return nil
+	end
+	table.sort(matches)
+	return matches
 end
 
 return search

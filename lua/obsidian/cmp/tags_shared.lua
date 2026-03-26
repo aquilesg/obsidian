@@ -178,10 +178,9 @@ end
 --- @param self obsidian.cmp.TagsSourceInstance
 function M:_vaultDir()
 	if self.opts.vault_dir then
-		return vim.fn.expand(self.opts.vault_dir)
+		return vim.fs.normalize(vim.fn.expand(self.opts.vault_dir))
 	end
-	local cfg = obsidian.getConfig()
-	return cfg and cfg.obsidian_vault_dir or nil
+	return obsidian.get_vault_dir()
 end
 
 --- @param self obsidian.cmp.TagsSourceInstance
