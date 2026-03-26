@@ -195,4 +195,34 @@ function M.properties_for_mark_in_progress(note_rel, opts)
 	}
 end
 
+--- Save the current buffer, run **`note.UpdateNoteProperties`** (Obsidian CLI), then **`:edit!`** so frontmatter refreshes.
+--- Resolves the note path with **`util.get_relative_path`** and **`obsidian.setup({ obsidian_vault_dir = ... })`**.
+---
+---@param properties table[] # rows passed to `note.UpdateNoteProperties`
+function M.update_note_properties(properties)
+	local cfg = require("obsidian").getConfig()
+	local vault = cfg.obsidian_vault_dir
+	if not vault then
+		vim.notify("obsidian_vault_dir is not configured", vim.log.levels.ERROR)
+		return
+	end
+	vault = vim.fn.expand(vault)
+
+	vim.api.nvim_buf_call(vim.api.nvim_get_current_buf(), function()
+		vim.cmd("write")
+	end)
+
+	local abs = vim.api.nvim_buf_get_name(0)
+	if abs == nil or abs == "" then
+		vim.notify("update_note_properties: buffer has no file path", vim.log.levels.WARN)
+		return
+	end
+
+	local util = require("obsidian.util")
+	local rel = util.get_relative_path(abs, vault)
+	local Note = require("obsidian.note")
+	Note.UpdateNoteProperties(properties, rel)
+	vim.cmd("edit!")
+end
+
 return M
