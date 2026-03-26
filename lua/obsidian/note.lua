@@ -2,6 +2,7 @@
 local NoteAPI = {}
 
 local log = require("obsidian.log")
+local encode_property_value = require("obsidian.note_properties").encode_property_value
 
 ---@class NoteProperty
 ---@field name string
@@ -129,23 +130,17 @@ end
 function NoteAPI.UpdateNoteProperties(properties, note_path)
 	local cli = require("obsidian.cli")
 	for _, property in ipairs(properties or {}) do
-		local value = property.value
-		if type(value) == "table" then
-			value = table.concat(value, ",")
-		else
-			value = tostring(value)
-		end
+		local raw = encode_property_value(property.value)
 		--- runTextCommand returns stdout on success, nil if the command failed.
 		local out = cli.runTextCommand(
-			"property:set name='"
-				.. property.name
-				.. "' value='"
-				.. value
-				.. "' type='"
-				.. property.type
-				.. "' path='"
-				.. note_path
-				.. "'"
+			"property:set name="
+				.. vim.fn.shellescape(property.name)
+				.. " value="
+				.. vim.fn.shellescape(raw)
+				.. " type="
+				.. vim.fn.shellescape(property.type)
+				.. " path="
+				.. vim.fn.shellescape(note_path)
 		)
 		if out == nil then
 			log.append("Failed to set property: " .. property.name .. "\n")
