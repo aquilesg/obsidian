@@ -142,4 +142,57 @@ function M.properties_for_mark_blocked(note_rel, response, opts)
 	}
 end
 
+--- Tags list with `exclude_tag` removed (e.g. `active` on mark complete), plus completed date + status.
+---
+---@param note_rel string
+---@param opts { tags_key: string, status_key: string, status_complete: string, exclude_tag?: string, completed_date_property?: string }
+---@return table[]
+function M.properties_for_mark_complete(note_rel, opts)
+	local tags_key = opts.tags_key
+	local status_key = opts.status_key
+	local status_complete = opts.status_complete
+	local exclude_tag = opts.exclude_tag or "active"
+	local completed_key = opts.completed_date_property or "completedDate"
+
+	local Note = require("obsidian.note")
+	local note_tags = Note.GetNoteProperties(note_rel, { tags_key })
+	local tag_list = note_tags[tags_key] or {}
+	if type(tag_list) == "string" then
+		tag_list = { tag_list }
+	end
+	local filtered = {}
+	for _, t in ipairs(tag_list) do
+		if t ~= exclude_tag then
+			filtered[#filtered + 1] = t
+		end
+	end
+
+	return {
+		{ name = completed_key, value = os.date("%Y-%m-%d"), type = "date" },
+		{ name = status_key, value = status_complete, type = "text" },
+		{ name = tags_key, value = filtered, type = "list" },
+	}
+end
+
+--- Add `active_tag` to tags if missing; set status to in-progress.
+---
+---@param note_rel string
+---@param opts { tags_key: string, status_key: string, status_in_progress: string, active_tag?: string }
+---@return table[]
+function M.properties_for_mark_in_progress(note_rel, opts)
+	local tags_key = opts.tags_key
+	local status_key = opts.status_key
+	local status_in_progress = opts.status_in_progress
+	local active_tag = opts.active_tag or "active"
+
+	local tags_new = vim.list_extend({}, M.get_string_list_property(note_rel, tags_key))
+	if not vim.tbl_contains(tags_new, active_tag) then
+		table.insert(tags_new, active_tag)
+	end
+	return {
+		{ name = status_key, value = status_in_progress, type = "text" },
+		{ name = tags_key, value = tags_new, type = "list" },
+	}
+end
+
 return M
