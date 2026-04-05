@@ -81,7 +81,7 @@ function NoteAPI.setActiveFile(note_path)
 	local rel = util.fileRelativeToVault(vault, abs)
 	if not rel then
 		log.append("setActiveFile: file not under vault\n" .. abs .. "\n")
-		vim.notify("setActiveFile: file is not inside obsidian_vault_dir", vim.log.levels.ERROR)
+		vim.notify("setActiveFile: file not under vault:" .. abs, vim.log.levels.ERROR)
 		return false
 	end
 
@@ -432,8 +432,7 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 	local cli = require("obsidian.cli")
 	local task_cmd = string.format('tasks path="%s" format="json"', util.escapeObsidianCliDoubleQuoted(target))
 	if requested_task_char and requested_task_char ~= "" then
-		task_cmd = task_cmd
-			.. string.format(' status="%s"', util.escapeObsidianCliDoubleQuoted(requested_task_char))
+		task_cmd = task_cmd .. string.format(' status="%s"', util.escapeObsidianCliDoubleQuoted(requested_task_char))
 	end
 
 	local task_table = cli.runJsonCommand(task_cmd)
@@ -457,10 +456,7 @@ function NoteAPI.UpdateNoteTask(note_path, requested_task_char, opts)
 				local n = vim.api.nvim_buf_get_name(b)
 				if n ~= "" and vim.fs.normalize(n) == note_abs then
 					if vim.bo[b].modified then
-						vim.notify(
-							"Note has unsaved changes; skipped reload after task update.",
-							vim.log.levels.WARN
-						)
+						vim.notify("Note has unsaved changes; skipped reload after task update.", vim.log.levels.WARN)
 					else
 						vim.api.nvim_buf_call(b, function()
 							vim.cmd.edit({ bang = true })
