@@ -64,10 +64,7 @@ function M.create_with_options(opts)
 	local directories = cfg.directories
 	local template_names = cfg.template_names
 	if not directories or not template_names then
-		vim.notify(
-			"obsidian: set directories and template_names in setup()",
-			vim.log.levels.ERROR
-		)
+		vim.notify("obsidian: set directories and template_names in setup()", vim.log.levels.ERROR)
 		return
 	end
 
@@ -94,19 +91,14 @@ function M.create_with_options(opts)
 			local cursor = vim.api.nvim_win_get_cursor(0)
 			local row, col = cursor[1], cursor[2]
 			local current_line = vim.api.nvim_get_current_line()
-			local new_line = string.sub(current_line, 1, col)
-				.. text
-				.. string.sub(current_line, col + 1)
+			local new_line = string.sub(current_line, 1, col) .. text .. string.sub(current_line, col + 1)
 			vim.api.nvim_set_current_line(new_line)
 			vim.api.nvim_win_set_cursor(0, { row, col + #text })
 		end
 		local dir = directories[choice]
 		local tmpl = template_names[choice]
 		if not dir or not tmpl then
-			vim.notify(
-				"obsidian: missing directory or template for " .. tostring(choice),
-				vim.log.levels.ERROR
-			)
+			vim.notify("obsidian: missing directory or template for " .. tostring(choice), vim.log.levels.ERROR)
 			return
 		end
 		Note.createNoteFromTemplate({
@@ -116,7 +108,9 @@ function M.create_with_options(opts)
 			templateVariables = {
 				id = user_id,
 				title = user_title,
+				date = tostring(os.date("%Y-%m-%d")),
 			},
+			properties = {},
 		})
 	end
 
