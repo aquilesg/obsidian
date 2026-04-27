@@ -92,6 +92,73 @@ function M.normalize_blocked_by_list(raw)
 	return out
 end
 
+--- Normalize tag text for equality (trim, strip one leading `#`).
+---@param t string|number
+---@return string
+local function tag_cmp_key(t)
+	local s = vim.trim(tostring(t))
+	if s:sub(1, 1) == "#" then
+		s = s:sub(2)
+	end
+	return s
+end
+
+--- Whether two tag values denote the same tag (handles `#active` vs `active`).
+---@param a string|number
+---@param b string|number
+---@return boolean
+local function tags_equivalent(a, b)
+	return tag_cmp_key(a) == tag_cmp_key(b)
+end
+
+--- Parse `tags` from GetNoteProperties: YAML array, or a single comma-separated scalar.
+---@param raw any
+---@return string[]
+local function parse_tags_property_value(raw)
+	if raw == nil then
+		return {}
+	end
+	if type(raw) == "table" then
+		local out = {}
+		for _, t in ipairs(raw) do
+			if type(t) == "string" then
+				if t:find(",", 1, true) then
+					for _, part in ipairs(vim.split(t, ",", { plain = true })) do
+						part = vim.trim(part)
+						if part ~= "" then
+							out[#out + 1] = part
+						end
+					end
+				else
+					local u = vim.trim(t)
+					if u ~= "" then
+						out[#out + 1] = u
+					end
+				end
+			end
+		end
+		return out
+	end
+	if type(raw) == "string" then
+		local s = vim.trim(raw)
+		if s == "" then
+			return {}
+		end
+		if s:find(",", 1, true) then
+			local out = {}
+			for _, part in ipairs(vim.split(s, ",", { plain = true })) do
+				part = vim.trim(part)
+				if part ~= "" then
+					out[#out + 1] = part
+				end
+			end
+			return out
+		end
+		return { s }
+	end
+	return {}
+end
+
 --- Read a list property as a Lua list of strings (tags, `pr_link`, etc.).
 ---@param note_rel string
 ---@param key string
@@ -156,13 +223,10 @@ function M.properties_for_mark_complete(note_rel, opts)
 
 	local Note = require("obsidian.note")
 	local note_tags = Note.GetNoteProperties(note_rel, { tags_key })
-	local tag_list = note_tags[tags_key] or {}
-	if type(tag_list) == "string" then
-		tag_list = { tag_list }
-	end
+	local tag_list = parse_tags_property_value(note_tags[tags_key])
 	local filtered = {}
 	for _, t in ipairs(tag_list) do
-		if t ~= exclude_tag then
+		if not tags_equivalent(t, exclude_tag) then
 			filtered[#filtered + 1] = t
 		end
 	end
@@ -185,8 +249,17 @@ function M.properties_for_mark_in_progress(note_rel, opts)
 	local status_in_progress = opts.status_in_progress
 	local active_tag = opts.active_tag or "active"
 
-	local tags_new = vim.list_extend({}, M.get_string_list_property(note_rel, tags_key))
-	if not vim.tbl_contains(tags_new, active_tag) then
+	local Note = require("obsidian.note")
+	local note_tags = Note.GetNoteProperties(note_rel, { tags_key })
+	local tags_new = parse_tags_property_value(note_tags[tags_key])
+	local has_active = false
+	for _, t in ipairs(tags_new) do
+		if tags_equivalent(t, active_tag) then
+			has_active = true
+			break
+		end
+	end
+	if not has_active then
 		table.insert(tags_new, active_tag)
 	end
 	return {
