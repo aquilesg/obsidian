@@ -50,12 +50,52 @@ end
 --- Presents a Telescope picker for a list of files.
 ---@param vault_dir string
 ---@param files string[]
-local function pick_files_with_telescope(vault_dir, files, prompt_title)
+---@param prompt_title string
+---@param preview_kind? "file"|"markdown_ts" # default `"file"`; `"markdown_ts"` uses buffer preview + treesitter/filetype highlighter (markdown vault notes).
+local function pick_files_with_telescope(vault_dir, files, prompt_title, preview_kind)
+	preview_kind = preview_kind or "file"
 	local pickers = require("telescope.pickers")
 	local finders = require("telescope.finders")
 	local conf = require("telescope.config").values
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
+
+	local previewer
+	if preview_kind == "markdown_ts" then
+		local previewers = require("telescope.previewers")
+		local preview_line_cap = 500
+		previewer = previewers.new_buffer_previewer({
+			title = "Note",
+			define_preview = function(self, entry, _)
+				local path = entry.path
+				local fd = io.open(path, "r")
+				if not fd then
+					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(unreadable)" })
+					return
+				end
+				local content = fd:read("*a")
+				fd:close()
+				local lines = vim.split(content or "", "\n", { plain = true })
+				if #lines > preview_line_cap then
+					local truncated = {}
+					for i = 1, preview_line_cap do
+						truncated[i] = lines[i]
+					end
+					truncated[#truncated + 1] = ""
+					truncated[#truncated + 1] = "... (preview truncated; "
+						.. (#lines - preview_line_cap)
+						.. " more lines)"
+					lines = truncated
+				end
+				vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+				pcall(function()
+					require("telescope.previewers.utils").highlighter(self.state.bufnr, "markdown")
+				end)
+			end,
+		})
+	else
+		previewer = conf.file_previewer({})
+	end
 
 	pickers
 		.new({}, {
@@ -74,7 +114,7 @@ local function pick_files_with_telescope(vault_dir, files, prompt_title)
 				end,
 			}),
 			sorter = conf.generic_sorter({}),
-			previewer = conf.file_previewer({}), -- Add this line
+			previewer = previewer,
 			attach_mappings = function(prompt_bufnr, _)
 				actions.select_default:replace(function()
 					local selection = action_state.get_selected_entry()
@@ -540,6 +580,37 @@ local function list_vault_md_paths(vault_root)
 	end
 	walk(vault_root, "")
 	return paths
+end
+
+---@class OpenFindFilePickerOpts
+---@field prompt_title string|nil
+
+--- Telescope fuzzy finder over vault `.md` paths (filter by file name / path). Preview uses `telescope.previewers.utils.highlighter` for markdown (treesitter when available).
+---@param opts OpenFindFilePickerOpts|nil
+function search.open_find_file_picker(opts)
+	opts = opts or {}
+	local vault = obsidian.ensure_vault_dir({ log_scope = "open_find_file_picker" })
+	if not vault then
+		return
+	end
+	local files = list_vault_md_paths(vault)
+	table.sort(files)
+	if #files == 0 then
+		vim.notify("No markdown notes in vault", vim.log.levels.INFO)
+		return
+	end
+	local title = opts.prompt_title or "Obsidian: find note by name"
+	local ok, err = pcall(pick_files_with_telescope, vault, files, title, "markdown_ts")
+	if not ok then
+		log.append("open_find_file_picker: Telescope failed: " .. tostring(err) .. "\n")
+		vim.notify("Telescope picker failed (" .. tostring(err) .. "). Using vim.ui.select.", vim.log.levels.WARN)
+		vim.ui.select(files, { prompt = title }, function(choice)
+			if choice == nil then
+				return
+			end
+			vim.cmd("edit " .. vim.fn.fnameescape(vim.fs.joinpath(vault, choice)))
+		end)
+	end
 end
 
 --- Notes whose frontmatter has `property_key` equal to `expected_value` (scalar or list membership).
