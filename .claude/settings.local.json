@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/opt/homebrew/bin/obsidian --help)",
+      "Bash(/opt/homebrew/bin/obsidian tag *)",
+      "Bash(luac -p lua/obsidian/search.lua)",
+      "Bash(luajit -bl lua/obsidian/search.lua)",
+      "Bash(luajit *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}

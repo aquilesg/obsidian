@@ -47,12 +47,45 @@ end
 ---@field results_title string|nil
 ---@field empty_message string|nil  Shown when the search returns no matches (default: "No matches")
 
+--- Move the cursor to the first line of the current buffer where `tag` appears.
+--- The `obsidian tag` CLI only returns file paths, so the line is located by scanning
+--- the buffer. An inline `#tag` occurrence is preferred; otherwise the tag name is
+--- matched on its own (e.g. a YAML frontmatter `tags:` entry). No-op if not found.
+---@param tag string Tag value without a leading '#'
+local function jump_to_tag_line(tag)
+	if not tag or tag == "" then
+		return
+	end
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+	-- `%f[^%w/_-]` is a frontier at the position right after a tag character, so `#foo`
+	-- does not match inside `#foobar`. Nested tags (`foo/bar`) and `-`/`_` count as tag chars.
+	local esc = vim.pesc(tag)
+	local inline = "#" .. esc .. "%f[^%w/_-]"
+	local word = "%f[%w/_-]" .. esc .. "%f[^%w/_-]"
+	local inline_line, word_line
+	for i, line in ipairs(lines) do
+		if line:find(inline) then
+			inline_line = i
+			break
+		end
+		if not word_line and line:find(word) then
+			word_line = i
+		end
+	end
+	local target = inline_line or word_line
+	if target then
+		pcall(vim.api.nvim_win_set_cursor, 0, { target, 0 })
+		vim.cmd("normal! zz")
+	end
+end
+
 --- Presents a Telescope picker for a list of files.
 ---@param vault_dir string
 ---@param files string[]
 ---@param prompt_title string
 ---@param preview_kind? "file"|"markdown_ts" # default `"file"`; `"markdown_ts"` uses buffer preview + treesitter/filetype highlighter (markdown vault notes).
-local function pick_files_with_telescope(vault_dir, files, prompt_title, preview_kind)
+---@param jump_tag? string # When set, jump the cursor to the first line containing this tag after opening the file.
+local function pick_files_with_telescope(vault_dir, files, prompt_title, preview_kind, jump_tag)
 	preview_kind = preview_kind or "file"
 	local pickers = require("telescope.pickers")
 	local finders = require("telescope.finders")
@@ -122,6 +155,9 @@ local function pick_files_with_telescope(vault_dir, files, prompt_title, preview
 					if selection and selection.value then
 						local path = vim.fs.joinpath(vault_dir, selection.value)
 						vim.cmd("edit " .. vim.fn.fnameescape(path))
+						if jump_tag and jump_tag ~= "" then
+							jump_to_tag_line(jump_tag)
+						end
 					end
 				end)
 				return true
@@ -282,7 +318,7 @@ search.findWithinTags = function(opts)
 			return
 		end
 		local file_list = vim.split(vim.trim(files), "\n", { plain = true })
-		pick_files_with_telescope(vault, file_list, "Notes with Tag")
+		pick_files_with_telescope(vault, file_list, "Notes with Tag", nil, tag_query_value(tag))
 	end
 
 	local ok, err = pcall(pick_tags_with_telescope, tags, on_tag_chosen)
