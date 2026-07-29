@@ -71,6 +71,26 @@ local function resolve_wiki_to_abs(vault, raw_inner)
 			return "multi"
 		end
 	end
+	-- Fallback: no file is named `target`, so treat it as an Obsidian alias and look
+	-- for a note whose frontmatter `aliases` list contains it (e.g. `[[Some Alias]]`).
+	local search = require("obsidian.search")
+	local alias_matches = search.FindNotesMatchingProperty("aliases", target)
+	if alias_matches and #alias_matches > 0 then
+		if #alias_matches == 1 then
+			return vim.fs.normalize(vim.fs.joinpath(vault_e, alias_matches[1]))
+		end
+		local abs_matches = {}
+		for _, rel in ipairs(alias_matches) do
+			abs_matches[#abs_matches + 1] = vim.fs.normalize(vim.fs.joinpath(vault_e, rel))
+		end
+		table.sort(abs_matches)
+		vim.ui.select(abs_matches, { prompt = "Multiple notes match alias — pick one:" }, function(choice)
+			if choice then
+				vim.cmd("edit " .. vim.fn.fnameescape(choice))
+			end
+		end)
+		return "multi"
+	end
 	return nil
 end
 

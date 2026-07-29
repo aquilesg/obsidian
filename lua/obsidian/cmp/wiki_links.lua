@@ -1,7 +1,8 @@
 --- Blink.cmp source: wiki-style `[[note]]` completion from markdown files in the vault.
 ---
 --- Trigger: type `[[`, then filter by path or title. Inserts the path **without** `.md`
---- (Obsidian-style).
+--- (Obsidian-style). Frontmatter `aliases` are also offered — selecting one inserts the
+--- alias text, which `obsidian.wiki_follow` resolves back to the source note.
 ---
 --- ```lua
 --- obsidian_wiki_links = {
@@ -14,8 +15,10 @@
 --- @module 'obsidian.cmp.wiki_links'
 
 local obsidian = require("obsidian")
+local util = require("obsidian.util")
 
 local WIKI_KIND_ICON = "󰈔"
+local WIKI_ALIAS_ICON = "󰌷"
 
 --- @class obsidian.cmp.WikiLinksOpts
 --- @field filetypes? string[]
@@ -78,6 +81,57 @@ local function link_text_from_rel(rel_md)
 	return base
 end
 
+--- Strip one layer of surrounding double quotes (matches search.property_value_matches).
+---@param s string
+---@return string
+local function strip_quotes(s)
+	s = vim.trim(s)
+	if s:sub(1, 1) == '"' and s:sub(-1, -1) == '"' then
+		s = s:sub(2, -2)
+	end
+	return s
+end
+
+--- Read a note's frontmatter `aliases` as a list of strings (scalar or block-list form).
+--- Uses the same simple YAML subset as the rest of the plugin (no CLI per file).
+---@param abs string
+---@return string[]
+local function read_aliases(abs)
+	local fd = io.open(abs, "r")
+	if not fd then
+		return {}
+	end
+	local content = fd:read("*a")
+	fd:close()
+	if not content then
+		return {}
+	end
+	local yaml_inner = select(1, util.splitNoteContent(content))
+	if not yaml_inner then
+		return {}
+	end
+	local data, _, err = util.parseYamlFrontmatterBlock(yaml_inner)
+	if err or not data or data.aliases == nil then
+		return {}
+	end
+	local raw = data.aliases
+	local out = {}
+	if type(raw) == "table" then
+		for _, v in ipairs(raw) do
+			local a = strip_quotes(tostring(v))
+			if a ~= "" then
+				out[#out + 1] = a
+			end
+		end
+	else
+		local a = strip_quotes(tostring(raw))
+		if a ~= "" then
+			out[#out + 1] = a
+		end
+	end
+	return out
+end
+
 ---@param line string
 ---@param col_byte number # 0-based nvim cursor column (exclusive end of text before cursor)
 ---@param cursor_line_1 integer # 1-based line number (from context)
@@ -116,7 +170,11 @@ local function wiki_fragment_range(line, col_byte, cursor_line_1)
 	}
 end
 
-local path_cache = { paths = nil, at = 0, vault = nil }
+--- @class obsidian.cmp.AliasEntry
+--- @field alias string # alias text (inserted as the link)
+--- @field rel_md string # source note path, relative to the vault
+
+local path_cache = { paths = nil, aliases = nil, at = 0, vault = nil }
 
 local M = {}
 
@@ -151,11 +209,12 @@ function M:_vault_dir()
 end
 
 --- @param self table
---- @return string[]|nil
+--- @return string[]|nil paths # vault-relative `.md` paths
+--- @return obsidian.cmp.AliasEntry[]|nil aliases # frontmatter aliases across the vault
 function M:_list_paths_cached()
 	local vault = self:_vault_dir()
 	if not vault then
-		return nil
+		return nil, nil
 	end
 	local ttl = self.opts.cache_ttl
 	if ttl == nil then
@@ -163,7 +222,7 @@ function M:_list_paths_cached()
 	end
 	local now = os.time()
 	if path_cache.paths and path_cache.vault == vault and (now - path_cache.at) < ttl then
-		return path_cache.paths
+		return path_cache.paths, path_cache.aliases
 	end
 	local exclude_names = self.opts.exclude_dir_names
 		or { ".git", ".obsidian", ".trash" }
@@ -173,10 +232,19 @@ function M:_list_paths_cached()
 	end
 	local paths = list_vault_md_paths(vault, exclude)
 	table.sort(paths)
+	-- Same pass reads each note's frontmatter `aliases` so completion can offer them.
+	local aliases = {}
+	for _, rel_md in ipairs(paths) do
+		local abs = vim.fs.joinpath(vault, rel_md)
+		for _, alias in ipairs(read_aliases(abs)) do
+			aliases[#aliases + 1] = { alias = alias, rel_md = rel_md }
+		end
+	end
 	path_cache.paths = paths
+	path_cache.aliases = aliases
 	path_cache.at = now
 	path_cache.vault = vault
-	return paths
+	return paths, aliases
 end
 
 --- @param self table
@@ -199,7 +267,7 @@ function M:get_completions(ctx, callback)
 	end
 
 	local fragment_l = parsed.fragment:lower()
-	local paths = self:_list_paths_cached()
+	local paths, aliases = self:_list_paths_cached()
 	if not paths then
 		callback({ items = {}, is_incomplete_backward = false, is_incomplete_forward = false })
 		return cancel
@@ -234,6 +302,32 @@ function M:get_completions(ctx, callback)
 			if #items >= max_items then
 				break
 			end
+		end
+	end
+
+	-- Frontmatter aliases: insert the alias itself (resolved by wiki_follow), showing
+	-- the source note as the detail. Skipped once max_items is reached.
+	for _, entry in ipairs(aliases or {}) do
+		if #items >= max_items then
+			break
+		end
+		local alias = entry.alias
+		local match = fragment_l == ""
+			or alias:lower():find(fragment_l, 1, true)
+			or entry.rel_md:lower():find(fragment_l, 1, true)
+		if match then
+			items[#items + 1] = {
+				label = alias,
+				kind = kinds.Reference,
+				kind_icon = WIKI_ALIAS_ICON,
+				filterText = alias .. " " .. entry.rel_md,
+				insertTextFormat = plain,
+				labelDetails = { description = "alias → " .. entry.rel_md },
+				textEdit = {
+					newText = alias,
+					range = parsed.range,
+				},
+			}
 		end
 	end
 
