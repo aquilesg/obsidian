@@ -298,4 +298,19 @@ function M.fileRelativeToVault(vault_root, file_abs)
 	return rel:gsub("\\", "/")
 end
 
+--- Whether a buffer is backed by a file inside the configured vault.
+---@param buf integer
+---@return boolean
+function M.isBufferInVault(buf)
+	local vault = require("obsidian").get_vault_dir()
+	if not vault then
+		return false
+	end
+	local path = vim.api.nvim_buf_get_name(buf)
+	if path == nil or path == "" then
+		return false
+	end
+	return M.fileRelativeToVault(vault, path) ~= nil
+end
+
 return M

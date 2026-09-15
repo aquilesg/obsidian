@@ -94,20 +94,6 @@ local function resolve_wiki_to_abs(vault, raw_inner)
 	return nil
 end
 
---- @param buf integer
---- @return boolean
-local function buffer_path_in_vault(buf)
-	local vault = require("obsidian").get_vault_dir()
-	if not vault then
-		return false
-	end
-	local path = vim.api.nvim_buf_get_name(buf)
-	if path == nil or path == "" then
-		return false
-	end
-	return util.fileRelativeToVault(vault, path) ~= nil
-end
-
 --- @return boolean # true if the key was handled (caller should not fall through)
 local function follow_wiki_link()
 	local buf = vim.api.nvim_get_current_buf()
@@ -115,7 +101,7 @@ local function follow_wiki_link()
 	if not vault then
 		return false
 	end
-	if not buffer_path_in_vault(buf) then
+	if not util.isBufferInVault(buf) then
 		return false
 	end
 	local cursor = vim.api.nvim_win_get_cursor(0)
@@ -158,7 +144,7 @@ function M.setup(opts)
 		if vim.b[buf].obsidian_wiki_follow_mapped then
 			return
 		end
-		if not buffer_path_in_vault(buf) then
+		if not util.isBufferInVault(buf) then
 			return
 		end
 		if not vim.tbl_contains(fts, vim.bo[buf].filetype) then

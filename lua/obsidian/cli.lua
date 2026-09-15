@@ -66,4 +66,37 @@ function Obsidian.runJsonCommand(cmd)
 	return result
 end
 
+--- Run a command without blocking and parse JSON from stdout. Args are passed to the executable
+--- directly (no shell), so values containing spaces need no quoting.
+--- @param args string[] Arguments after the obsidian executable.
+--- @param cb fun(result: table|nil, err: string|nil) Called on the main loop.
+--- @param silent? boolean Skip logging failures (for background polls).
+function Obsidian.runJsonCommandAsync(args, cb, silent)
+	local cfg = require("obsidian").getConfig()
+	local cmd = { cfg.obsidian_cli }
+	vim.list_extend(cmd, args)
+	vim.system(cmd, { text = true }, function(res)
+		vim.schedule(function()
+			if res.code ~= 0 then
+				local err = (res.stderr ~= "" and res.stderr) or res.stdout or "unknown error"
+				if not silent then
+					log.append("Encountered err: " .. err)
+				end
+				cb(nil, err)
+				return
+			end
+			local ok, result = pcall(vim.json.decode, res.stdout)
+			if not ok or type(result) ~= "table" then
+				local err = "could not parse output:\n" .. (res.stdout or "")
+				if not silent then
+					log.append(err)
+				end
+				cb(nil, err)
+				return
+			end
+			cb(result, nil)
+		end)
+	end)
+end
+
 return Obsidian

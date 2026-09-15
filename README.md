@@ -29,9 +29,43 @@ This plugin is intended to be used via API call and does not support features su
 - [x] Note Renaming
 - [x] Tag Creation
 - [x] Tag Searching
+- [x] Pomodoro control (TaskNotes)
 - Completion
   - [ ] Notes Based off of Name
   - [x] Tags Based off of Name
+
+## Pomodoro
+
+Controls the TaskNotes pomodoro of the vault through the Obsidian CLI. Call `setup()` eagerly --
+somewhere that runs at startup, such as your statusline config -- so the background poll keeps the
+cached session state fresh:
+
+```lua
+require("obsidian.pomodoro").setup({
+  vault = "brain",      -- CLI `vault=` name; defaults to the basename of `obsidian_vault_dir`
+  poll_ms = 15000,      -- how often to resync with the CLI
+  keymaps = true,       -- register `<leader>op{s,e,p,r,i}`
+  keymap_prefix = "<leader>op",
+})
+```
+
+`:Pomodoro [start|stop|pause|resume|status]` runs an action and reports the result;
+`start` uses an open vault note as the TaskNotes task (prompting when several are open).
+
+For a statusline component, `require("obsidian.pomodoro").statusline()` returns the remaining
+minutes and session type (empty when no session is active), and `cache.status` is
+`"running" | "paused" | "stopped"`:
+
+```lua
+{
+  function()
+    return require("obsidian.pomodoro").statusline()
+  end,
+  cond = function()
+    return require("obsidian.pomodoro").cache.status ~= "stopped"
+  end,
+}
+```
 
 ## Testing
 
