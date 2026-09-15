@@ -15,6 +15,11 @@ use {
 }
 ```
 
+The Obsidian CLI is found by name on `$PATH`, then under the Homebrew prefix
+(`$HOMEBREW_PREFIX`, the prefix `brew` itself lives in, and the usual Apple Silicon, Intel,
+and Linuxbrew locations). Set `obsidian_cli` to a name to look up, or to an absolute path to
+skip the lookup entirely.
+
 ## Road Map
 
 This plug is designed entirely to allow access to your Obsidian Vault,

@@ -20,10 +20,9 @@ local config = {
 	obsidian_vault_dir = nil,
 	-- directory that contains templates
 	template_dir = nil,
-	-- Executable for the Obsidian CLI (name on PATH or absolute path). Neovim's :help system()
-	-- does not use an interactive shell, so ~/.zshrc PATH changes often do not apply; set this if
-	-- you get "command not found" (exit 127) for `obsidian`.
-	obsidian_cli = "/opt/homebrew/bin/obsidian",
+	-- Executable for the Obsidian CLI: a name looked up on PATH and then under the Homebrew
+	-- prefix (see `obsidian.cli.executable`), or an absolute path to bypass that lookup.
+	obsidian_cli = "obsidian",
 	---@type { key: string, label: string }[]
 	task_statuses = default_task_statuses(),
 	--- Normal mode `[[wiki]]` follow (see `wiki_follow.lua`). Set via `setup({ wiki_follow = ... })`.
@@ -64,7 +63,7 @@ function M.setup(opts)
 	opts = opts or {}
 	config.obsidian_vault_dir = opts.obsidian_vault_dir and vim.fn.expand(opts.obsidian_vault_dir) or nil
 	config.template_dir = opts.template_dir
-	config.obsidian_cli = vim.fn.expand(opts.obsidian_cli or "obsidian")
+	config.obsidian_cli = opts.obsidian_cli or "obsidian"
 	if opts.task_statuses ~= nil then
 		config.task_statuses = opts.task_statuses
 	end
