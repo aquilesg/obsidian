@@ -3,7 +3,7 @@
 --- `start` runs a session for an open note (its filename, minus the extension, is used as the
 --- TaskNotes `title=`). It scans every loaded buffer for vault notes; with one it uses that note,
 --- with several it prompts you to pick. `stop`, `pause`, `resume` and `status` act on the running
---- session and need no note.
+--- session and need no note. `goto` opens the note the running session is tracking.
 ---
 --- Call `setup()` eagerly (e.g. from your statusline config) so the background poll keeps
 --- `M.statusline()` fresh.
@@ -15,12 +15,15 @@ local util = require("obsidian.util")
 
 local M = {}
 
-M.actions = { "start", "stop", "pause", "resume", "status" }
+-- Actions the CLI understands; `goto` is handled locally from the cached session note.
+local CLI_ACTIONS = { "start", "stop", "pause", "resume", "status" }
+
+M.actions = vim.list_extend(vim.deepcopy(CLI_ACTIONS), { "goto" })
 
 --- @class obsidian.pomodoro.SetupOpts
 --- @field vault? string # CLI `vault=` name; defaults to the basename of `obsidian_vault_dir`
 --- @field poll_ms? integer # how often the background poll resyncs with the CLI, default 15000
---- @field keymaps? boolean # register the `<prefix>{s,e,p,r,i}` mappings, default true
+--- @field keymaps? boolean # register the `<prefix>{s,e,p,r,i,g}` mappings, default true
 --- @field keymap_prefix? string # default `<leader>op`
 
 -- POLL_MS only needs to be frequent enough to catch session transitions (work -> break) started
@@ -42,6 +45,10 @@ M.cache = {
 	remaining = 0,
 	synced_at = 0,
 	type = nil,
+	-- Note the session is tracking: `note_id` is the filename stem (TaskNotes `title=`),
+	-- `note_path` is vault-relative. Both nil with no session.
+	note_id = nil,
+	note_path = nil,
 	alerted = false, -- whether the "1 minute left" warning has fired this session
 }
 
@@ -185,6 +192,9 @@ local function update_cache(state)
 	M.cache.remaining = math.floor(tonumber(val(state.timeRemaining, 0)) or 0)
 	M.cache.synced_at = os.time()
 	M.cache.type = session and val(session.type, nil) or nil
+	local task = session and val(session.task, {}) or {}
+	M.cache.note_id = val(task.title, nil)
+	M.cache.note_path = val(task.path, nil)
 	-- A fresh session (more than a minute on the clock) re-arms the warning; this also covers
 	-- work -> break transitions, which reset the timer.
 	if M.cache.remaining > 60 then
@@ -271,6 +281,36 @@ local function run_action(action, title, reload_buf)
 	end)
 end
 
+--- Absolute path of the note the session is tracking, from `note_path` (or `note_id` when the
+--- CLI reports no path).
+--- @return string|nil
+local function tracked_note_file()
+	local dir = require("obsidian").get_vault_dir()
+	if not dir then
+		return nil
+	end
+	local rel = M.cache.note_path or (M.cache.note_id and (M.cache.note_id .. ".md"))
+	return rel and (dir .. "/" .. rel) or nil
+end
+
+--- Open the note the current session is tracking. Resyncs with the CLI first so a session started
+--- outside Neovim, or since the last poll, is picked up.
+function M.goto_note()
+	cli.runJsonCommandAsync(pomodoro_args("status"), function(state, err)
+		if not state then
+			vim.notify("Pomodoro failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+			return
+		end
+		update_cache(state)
+		local file = tracked_note_file()
+		if not file then
+			vim.notify("Pomodoro: no session note to open", vim.log.levels.WARN)
+			return
+		end
+		vim.cmd("edit " .. vim.fn.fnameescape(file))
+	end)
+end
+
 --- Run a pomodoro action and show the result.
 --- @param action string|nil # one of `M.actions`, default "status"
 function M.pomodoro(action)
@@ -283,6 +323,11 @@ function M.pomodoro(action)
 	-- `start` acts on an open note, chosen from the loaded buffers (prompting if there is more
 	-- than one); the other actions need no note. Resolve the note first, then run the command
 	-- with the chosen title.
+	if action == "goto" then
+		M.goto_note()
+		return
+	end
+
 	if action ~= "start" then
 		run_action(action)
 		return
@@ -320,7 +365,7 @@ function M.setup(opts)
 				return a:find(arg_lead, 1, true) == 1
 			end, M.actions)
 		end,
-		desc = "Control TaskNotes Pomodoro (start|stop|pause|resume|status)",
+		desc = "Control TaskNotes Pomodoro (start|stop|pause|resume|status|goto)",
 	})
 
 	if options.keymaps then
@@ -330,6 +375,7 @@ function M.setup(opts)
 			{ "p", "pause", "Pomodoro pause" },
 			{ "r", "resume", "Pomodoro resume" },
 			{ "i", "status", "Pomodoro status" },
+			{ "g", "goto", "Pomodoro go to tracked note" },
 		}
 		for _, km in ipairs(keymaps) do
 			local suffix, action, desc = km[1], km[2], km[3]

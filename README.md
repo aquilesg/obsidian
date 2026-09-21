@@ -49,17 +49,19 @@ cached session state fresh:
 require("obsidian.pomodoro").setup({
   vault = "brain",      -- CLI `vault=` name; defaults to the basename of `obsidian_vault_dir`
   poll_ms = 15000,      -- how often to resync with the CLI
-  keymaps = true,       -- register `<leader>op{s,e,p,r,i}`
+  keymaps = true,       -- register `<leader>op{s,e,p,r,i,g}`
   keymap_prefix = "<leader>op",
 })
 ```
 
-`:Pomodoro [start|stop|pause|resume|status]` runs an action and reports the result;
-`start` uses an open vault note as the TaskNotes task (prompting when several are open).
+`:Pomodoro [start|stop|pause|resume|status|goto]` runs an action and reports the result;
+`start` uses an open vault note as the TaskNotes task (prompting when several are open), and
+`goto` opens the note the current session is tracking.
 
 For a statusline component, `require("obsidian.pomodoro").statusline()` returns the remaining
 minutes and session type (empty when no session is active), and `cache.status` is
-`"running" | "paused" | "stopped"`:
+`"running" | "paused" | "stopped"`. The tracked note is on the cache too: `cache.note_id` is the
+filename stem and `cache.note_path` is the vault-relative path (both nil with no session):
 
 ```lua
 {
